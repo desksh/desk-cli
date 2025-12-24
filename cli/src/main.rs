@@ -1,6 +1,6 @@
 //! Desk CLI - Developer Context Switching Tool
 //!
-//! Desk eliminates the hidden tax of context switching by capturing and 
+//! Desk eliminates the hidden tax of context switching by capturing and
 //! restoring complete development contexts—git state, open files, running
 //! services, and more.
 

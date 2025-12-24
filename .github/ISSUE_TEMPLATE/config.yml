@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/your-org/desk-cli/wiki
+    url: https://github.com/desksh/desk-cli/wiki
     about: Check our documentation for usage guides and FAQ
   - name: Discussions
-    url: https://github.com/your-org/desk-cli/discussions
+    url: https://github.com/desksh/desk-cli/discussions
     about: Ask questions and share ideas in GitHub Discussions

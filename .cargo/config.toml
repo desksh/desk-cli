@@ -19,8 +19,7 @@ test-all = "test --all-features --all-targets"
 # Documentation
 docs = "doc --no-deps --all-features --document-private-items"
 
-# Audit
-audit = "audit --deny warnings"
+# Note: Don't alias 'audit' - conflicts with cargo-audit binary
 
 [env]
 # Default log level for development

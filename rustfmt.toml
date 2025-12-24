@@ -1,5 +1,8 @@
 # Rust formatting configuration
 # https://rust-lang.github.io/rustfmt/
+#
+# Note: Many options require nightly. This config uses only stable options.
+# For full config, use: cargo +nightly fmt
 
 edition = "2021"
 max_width = 100
@@ -7,43 +10,15 @@ tab_spaces = 4
 newline_style = "Unix"
 use_small_heuristics = "Default"
 
-# Imports
-imports_granularity = "Module"
-group_imports = "StdExternalCrate"
+# Imports (stable)
 reorder_imports = true
 reorder_modules = true
 
-# Comments
-format_code_in_doc_comments = true
-wrap_comments = true
-comment_width = 100
-normalize_comments = true
-normalize_doc_attributes = true
-
-# Functions
-fn_params_layout = "Tall"
-fn_single_line = false
-
-# Structs and enums
-struct_lit_single_line = true
+# Structs (stable)
 use_field_init_shorthand = true
-enum_discrim_align_threshold = 20
 
-# Match expressions
+# Match expressions (stable)
 match_block_trailing_comma = true
-match_arm_blocks = true
 
-# Control flow
-control_brace_style = "AlwaysSameLine"
-force_multiline_blocks = false
-
-# Macros
-format_macro_matchers = true
-format_macro_bodies = true
-
-# Strings
-format_strings = false
-
-# Misc
-hex_literal_case = "Lower"
+# Misc (stable)
 force_explicit_abi = true
