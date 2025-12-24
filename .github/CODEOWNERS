@@ -1,0 +1,20 @@
+# CODEOWNERS - Define who is responsible for code review
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @your-org/desk-maintainers
+
+# CI/CD configuration
+/.github/ @your-org/desk-maintainers
+
+# Core CLI code
+/cli/ @your-org/desk-maintainers
+
+# Documentation
+/docs/ @your-org/desk-maintainers
+*.md @your-org/desk-maintainers
+
+# Configuration files
+Cargo.toml @your-org/desk-maintainers
+rustfmt.toml @your-org/desk-maintainers
+clippy.toml @your-org/desk-maintainers
