@@ -1,0 +1,55 @@
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Testing and coverage
+coverage/
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Documentation build
+/book/
+/docs/book/
+
+# Benchmarks
+criterion/
