@@ -1,0 +1,46 @@
+[build]
+# Uncomment to use sccache for faster builds
+# rustc-wrapper = "sccache"
+
+[alias]
+# Common shortcuts
+b = "build"
+c = "check"
+t = "test"
+r = "run"
+br = "build --release"
+rr = "run --release"
+
+# Quality checks
+lint = "clippy --all-targets --all-features -- -D warnings"
+fmt-check = "fmt --all -- --check"
+test-all = "test --all-features --all-targets"
+
+# Documentation
+docs = "doc --no-deps --all-features --document-private-items"
+
+# Audit
+audit = "audit --deny warnings"
+
+[env]
+# Default log level for development
+RUST_LOG = { value = "desk=debug,info", force = false }
+RUST_BACKTRACE = { value = "1", force = false }
+
+[registries.crates-io]
+protocol = "sparse"
+
+[net]
+git-fetch-with-cli = true
+retry = 3
+
+# Cross-compilation settings (uncomment as needed)
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
