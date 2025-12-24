@@ -1,0 +1,29 @@
+# Clippy configuration
+# https://rust-lang.github.io/rust-clippy/
+
+# Cognitive complexity threshold for functions
+cognitive-complexity-threshold = 25
+
+# Maximum number of function arguments
+too-many-arguments-threshold = 7
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Enum variant size difference threshold
+enum-variant-size-threshold = 200
+
+# Maximum lines in a function
+too-many-lines-threshold = 100
+
+# Allow unwrap in tests
+allow-unwrap-in-tests = true
+
+# MSRV - Minimum Supported Rust Version
+msrv = "1.75"
+
+# Documentation requirements
+missing-docs-in-crate-items = false
+
+# Avoid false positives with async
+await-holding-invalid-types = []
