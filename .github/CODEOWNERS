@@ -2,19 +2,19 @@
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owners for everything in the repo
-* @your-org/desk-maintainers
+* @desksh/desk-maintainers
 
 # CI/CD configuration
-/.github/ @your-org/desk-maintainers
+/.github/ @desksh/desk-maintainers
 
 # Core CLI code
-/cli/ @your-org/desk-maintainers
+/cli/ @desksh/desk-maintainers
 
 # Documentation
-/docs/ @your-org/desk-maintainers
-*.md @your-org/desk-maintainers
+/docs/ @desksh/desk-maintainers
+*.md @desksh/desk-maintainers
 
 # Configuration files
-Cargo.toml @your-org/desk-maintainers
-rustfmt.toml @your-org/desk-maintainers
-clippy.toml @your-org/desk-maintainers
+Cargo.toml @desksh/desk-maintainers
+rustfmt.toml @desksh/desk-maintainers
+clippy.toml @desksh/desk-maintainers

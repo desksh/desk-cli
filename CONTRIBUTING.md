@@ -21,8 +21,8 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
 ### Finding Issues
 
-- Look for issues labeled [`good first issue`](https://github.com/your-org/desk-cli/labels/good%20first%20issue) for beginner-friendly tasks
-- Check [`help wanted`](https://github.com/your-org/desk-cli/labels/help%20wanted) for issues where we need assistance
+- Look for issues labeled [`good first issue`](https://github.com/desksh/desk-cli/labels/good%20first%20issue) for beginner-friendly tasks
+- Check [`help wanted`](https://github.com/desksh/desk-cli/labels/help%20wanted) for issues where we need assistance
 - Feel free to ask questions on any issue before starting work
 
 ### Before You Start
@@ -47,7 +47,7 @@ git clone https://github.com/YOUR_USERNAME/desk-cli.git
 cd desk-cli
 
 # Add upstream remote
-git remote add upstream https://github.com/your-org/desk-cli.git
+git remote add upstream https://github.com/desksh/desk-cli.git
 
 # Install development tools
 rustup component add rustfmt clippy
@@ -292,7 +292,7 @@ pub fn new(name: &str) -> Result<Self> {
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/your-org/desk-cli/discussions)
+- Open a [Discussion](https://github.com/desksh/desk-cli/discussions)
 - Ask in issue comments
 - Reach out to maintainers
 
