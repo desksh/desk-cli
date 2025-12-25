@@ -57,3 +57,13 @@ pub fn ensure_data_dir() -> Result<PathBuf> {
     }
     Ok(dir)
 }
+
+/// Ensure the workspaces directory exists.
+#[allow(dead_code)]
+pub fn ensure_workspaces_dir() -> Result<PathBuf> {
+    let dir = workspaces_dir()?;
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir)?;
+    }
+    Ok(dir)
+}

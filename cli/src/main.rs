@@ -9,6 +9,8 @@ mod cli;
 mod client;
 mod config;
 mod error;
+mod git;
+mod workspace;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;

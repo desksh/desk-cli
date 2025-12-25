@@ -34,6 +34,9 @@ reqwest-retry = "0.7"
 # OAuth2
 oauth2 = "4.4"
 
+# Git operations
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+
 # Secure Credential Storage
 keyring = { version = "3.6", features = ["linux-native", "apple-native", "windows-native"] }
 
