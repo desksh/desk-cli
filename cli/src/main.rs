@@ -48,5 +48,13 @@ async fn run(cli: Cli) -> Result<()> {
             AuthCommands::Logout => cli::commands::handle_logout().await,
             AuthCommands::Status => cli::commands::handle_status().await,
         },
+        Commands::Open {
+            name,
+            description,
+            force,
+        } => cli::commands::handle_open(&name, description, force),
+        Commands::List => cli::commands::handle_list(),
+        Commands::Status => cli::commands::handle_workspace_status(),
+        Commands::Close { switch_to } => cli::commands::handle_close(switch_to),
     }
 }

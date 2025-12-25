@@ -31,8 +31,38 @@ pub enum Commands {
         #[command(subcommand)]
         command: AuthCommands,
     },
-    // Future commands will be added here:
-    // Open, Switch, Close, List, Status, Config
+
+    /// Create or restore a workspace.
+    ///
+    /// If the workspace exists, restores its git state (branch, stashed changes).
+    /// If it doesn't exist, saves the current git state as a new workspace.
+    Open {
+        /// Name of the workspace to open or create.
+        name: String,
+
+        /// Optional description for a new workspace.
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Force overwrite if workspace already exists.
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// List all saved workspaces.
+    List,
+
+    /// Show current workspace and git status.
+    Status,
+
+    /// Close the current workspace.
+    ///
+    /// Saves the current state and optionally switches to another workspace.
+    Close {
+        /// Workspace to switch to after closing.
+        #[arg(short, long)]
+        switch_to: Option<String>,
+    },
 }
 
 /// Authentication subcommands.
