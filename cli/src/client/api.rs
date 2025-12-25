@@ -1,4 +1,10 @@
-//! Desk API client implementation.
+//! Desk API client for backend communication.
+//!
+//! This module provides the main HTTP client for interacting with the Desk API.
+//! It handles:
+//! - Authentication header injection via middleware
+//! - Automatic token refresh for expired tokens
+//! - OAuth token exchange for API credentials
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,12 +14,23 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::auth::{ApiCredentials, CredentialStore, TokenSet};
+use crate::auth::{ApiCredentials, AuthProvider, CredentialStore, TokenSet};
 use crate::client::middleware::{AuthMiddleware, TokenRefreshMiddleware};
 use crate::config::ApiConfig;
 use crate::error::{DeskError, Result};
 
+/// Response from the token exchange endpoint.
+#[derive(serde::Deserialize)]
+struct TokenExchangeResponse {
+    api_token: String,
+    expires_at: chrono::DateTime<chrono::Utc>,
+    user_id: String,
+}
+
 /// Main API client for communicating with the Desk backend.
+///
+/// Wraps an HTTP client with authentication and token refresh middleware.
+/// Credentials are stored in memory and synchronized with the OS keyring.
 pub struct DeskApiClient {
     client: ClientWithMiddleware,
     base_url: Url,
@@ -21,11 +38,13 @@ pub struct DeskApiClient {
 }
 
 impl DeskApiClient {
-    /// Create a new API client.
+    /// Creates a new API client with the given configuration.
+    ///
+    /// Initializes the HTTP client with authentication and token refresh middleware.
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP client cannot be built.
+    /// Returns an error if the HTTP client cannot be built (e.g., TLS initialization fails).
     pub fn new(config: &ApiConfig) -> Result<Self> {
         let inner_client = Client::builder()
             .user_agent(format!("desk-cli/{}", env!("CARGO_PKG_VERSION")))
@@ -34,7 +53,6 @@ impl DeskApiClient {
 
         let credentials: Arc<RwLock<Option<ApiCredentials>>> = Arc::new(RwLock::new(None));
 
-        // Build middleware stack
         let client = ClientBuilder::new(inner_client.clone())
             .with(AuthMiddleware::new(Arc::clone(&credentials)))
             .with(TokenRefreshMiddleware::new(
@@ -51,15 +69,17 @@ impl DeskApiClient {
         })
     }
 
-    /// Load credentials from secure storage.
+    /// Loads credentials from the OS keyring into memory.
+    ///
+    /// Should be called before making authenticated API requests.
     ///
     /// # Returns
     ///
-    /// Returns `true` if credentials were found and loaded.
+    /// Returns `true` if credentials were found and loaded, `false` if none exist.
     ///
     /// # Errors
     ///
-    /// Returns an error if credentials cannot be read.
+    /// Returns an error if the keyring is inaccessible or credentials are corrupted.
     pub async fn load_credentials(&self) -> Result<bool> {
         let store = CredentialStore::new()?;
         if let Some(creds) = store.load()? {
@@ -70,46 +90,57 @@ impl DeskApiClient {
         }
     }
 
-    /// Set credentials directly (after authentication).
-    #[allow(dead_code)]
+    /// Sets credentials directly in memory (after successful authentication).
+    ///
+    /// Does not persist to the keyring; use [`CredentialStore::save`] for that.
+    #[allow(dead_code)] // Kept for future API commands
     pub async fn set_credentials(&self, creds: ApiCredentials) {
         *self.credentials.write().await = Some(creds);
     }
 
-    /// Clear credentials.
-    #[allow(dead_code)]
+    /// Clears credentials from memory.
+    ///
+    /// Does not delete from the keyring; use [`CredentialStore::delete`] for that.
+    #[allow(dead_code)] // Kept for future logout enhancements
     pub async fn clear_credentials(&self) {
         *self.credentials.write().await = None;
     }
 
-    /// Check if the client has valid credentials loaded.
-    #[allow(dead_code)]
+    /// Checks if the client has credentials loaded in memory.
+    #[allow(dead_code)] // Kept for future API commands
     pub async fn is_authenticated(&self) -> bool {
         self.credentials.read().await.is_some()
     }
 
-    /// Get the current user information.
+    /// Returns a clone of the current credentials, if any.
     pub async fn get_credentials(&self) -> Option<ApiCredentials> {
         self.credentials.read().await.clone()
     }
 
-    /// Exchange OAuth provider tokens for Desk API tokens.
+    /// Exchanges OAuth provider tokens for Desk API credentials.
     ///
-    /// This is called after successful OAuth authentication to get
-    /// Desk backend API credentials.
+    /// Called after successful OAuth authentication to obtain API access.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - The OAuth provider used for authentication
+    /// * `provider_tokens` - Tokens received from the OAuth provider
     ///
     /// # Errors
     ///
-    /// Returns an error if the token exchange fails.
+    /// Returns an error if:
+    /// - The API is unreachable ([`DeskError::ApiUnavailable`])
+    /// - Authentication fails ([`DeskError::Unauthorized`])
+    /// - The response cannot be parsed ([`DeskError::Serialization`])
     pub async fn exchange_token(
         &self,
-        provider: crate::auth::AuthProvider,
+        provider: AuthProvider,
         provider_tokens: &TokenSet,
     ) -> Result<ApiCredentials> {
         let url = self
             .base_url
             .join("/v1/auth/token")
-            .map_err(|e| DeskError::Config(format!("Invalid URL: {e}")))?;
+            .map_err(|e| DeskError::Config(format!("Invalid token URL: {e}")))?;
 
         let body = serde_json::json!({
             "provider": provider.to_string(),
@@ -125,26 +156,28 @@ impl DeskApiClient {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
+        let status = response.status();
+        if !status.is_success() {
+            let status_code = status.as_u16();
             let message = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(DeskError::ApiError { status, message });
-        }
+                .unwrap_or_else(|_| format!("HTTP {status_code}"));
 
-        #[derive(serde::Deserialize)]
-        struct TokenExchangeResponse {
-            api_token: String,
-            expires_at: chrono::DateTime<chrono::Utc>,
-            user_id: String,
+            return Err(match status_code {
+                401 => DeskError::Unauthorized,
+                503 => DeskError::ApiUnavailable,
+                _ => DeskError::ApiError {
+                    status: status_code,
+                    message,
+                },
+            });
         }
 
         let data: TokenExchangeResponse = response
             .json()
             .await
-            .map_err(|e| DeskError::Serialization(e.to_string()))?;
+            .map_err(|e| DeskError::Serialization(format!("Invalid token response: {e}")))?;
 
         Ok(ApiCredentials {
             provider,
@@ -155,17 +188,19 @@ impl DeskApiClient {
         })
     }
 
-    /// Get the base URL.
+    /// Returns the base URL for API requests.
+    #[allow(dead_code)] // Kept for future API commands
     #[must_use]
-    #[allow(dead_code)]
-    pub fn base_url(&self) -> &Url {
+    pub const fn base_url(&self) -> &Url {
         &self.base_url
     }
 
-    /// Get a reference to the underlying HTTP client.
+    /// Returns a reference to the underlying HTTP client.
+    ///
+    /// Use this for making custom API requests not covered by other methods.
+    #[allow(dead_code)] // Kept for future API commands
     #[must_use]
-    #[allow(dead_code)]
-    pub fn client(&self) -> &ClientWithMiddleware {
+    pub const fn client(&self) -> &ClientWithMiddleware {
         &self.client
     }
 }

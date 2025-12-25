@@ -50,7 +50,8 @@ pub fn save_config_to(config: &DeskConfig, path: &Path) -> Result<()> {
         }
     }
 
-    let contents = toml::to_string_pretty(config).map_err(|e| DeskError::ConfigWrite(e.to_string()))?;
+    let contents =
+        toml::to_string_pretty(config).map_err(|e| DeskError::ConfigWrite(e.to_string()))?;
     std::fs::write(path, contents)?;
 
     Ok(())

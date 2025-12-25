@@ -1,4 +1,12 @@
 //! OAuth device authorization flow implementation (RFC 8628).
+//!
+//! The device flow is designed for devices with limited input capabilities.
+//! It works by:
+//! 1. Requesting a device code from the OAuth provider
+//! 2. Displaying a URL and code for the user to enter on another device
+//! 3. Polling until the user completes authorization
+//!
+//! This is the same flow used by GitHub CLI, Azure CLI, and other CLI tools.
 
 use std::time::Duration;
 
@@ -13,36 +21,41 @@ use crate::auth::tokens::{AuthProvider, TokenSet};
 use crate::error::{DeskError, Result};
 
 /// Response from initiating device authorization.
-#[allow(dead_code)]
+///
+/// Contains the information needed for the user to complete authentication
+/// and for the CLI to poll for completion.
 pub struct DeviceAuthResponse {
-    /// URL for the user to visit.
+    /// URL for the user to visit to authenticate.
     pub verification_uri: String,
-    /// Complete URL with code (if available).
+    /// Complete URL with the code pre-filled (if supported by provider).
     pub verification_uri_complete: Option<String>,
-    /// Code for the user to enter.
+    /// Code for the user to enter at the verification URL.
     pub user_code: String,
-    /// How long until the code expires.
+    /// How long until the device code expires.
+    #[allow(dead_code)] // Kept for future timeout display
     pub expires_in: Duration,
-    /// Internal response for polling.
+    /// Internal response for polling (not exposed to callers).
     inner: StandardDeviceAuthorizationResponse,
-    /// The provider being used.
+    /// The provider being used for authentication.
     provider: AuthProvider,
-    /// Custom client ID if any.
+    /// Custom client ID if any was provided.
     custom_client_id: Option<String>,
 }
 
-/// Start the device authorization flow.
+/// Starts the device authorization flow with an OAuth provider.
 ///
-/// Returns the verification URL and user code for the user to complete authentication.
+/// Requests a device code and returns the verification URL and user code
+/// that should be displayed to the user.
 ///
 /// # Arguments
 ///
-/// * `provider` - The OAuth provider to use.
-/// * `custom_client_id` - Optional custom client ID.
+/// * `provider` - The OAuth provider to authenticate with
+/// * `custom_client_id` - Optional custom OAuth client ID (for enterprise setups)
 ///
 /// # Errors
 ///
-/// Returns an error if the device authorization request fails.
+/// Returns [`DeskError::ProviderUnavailable`] if the provider cannot be reached,
+/// or [`DeskError::AuthenticationFailed`] for other failures.
 pub async fn start_device_flow(
     provider: AuthProvider,
     custom_client_id: Option<&str>,
@@ -61,7 +74,16 @@ pub async fn start_device_flow(
     let response = request
         .request_async(async_http_client)
         .await
-        .map_err(|e| DeskError::AuthenticationFailed(format!("Device authorization failed: {e}")))?;
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            if err_msg.contains("timeout") || err_msg.contains("connect") {
+                DeskError::ProviderUnavailable {
+                    provider: provider.to_string(),
+                }
+            } else {
+                DeskError::AuthenticationFailed(format!("Device authorization failed: {e}"))
+            }
+        })?;
 
     Ok(DeviceAuthResponse {
         verification_uri: response.verification_uri().to_string(),
@@ -76,21 +98,16 @@ pub async fn start_device_flow(
     })
 }
 
-/// Poll for token completion.
+/// Polls for token completion after the user has been directed to authenticate.
 ///
-/// This will poll the token endpoint until the user completes authorization
-/// or the device code expires.
+/// This will repeatedly poll the token endpoint until:
+/// - The user completes authorization (returns tokens)
+/// - The device code expires ([`DeskError::DeviceAuthorizationExpired`])
+/// - The user denies access ([`DeskError::AccessDenied`])
 ///
 /// # Arguments
 ///
-/// * `device_auth` - The device authorization response from `start_device_flow`.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The device code expires
-/// - The user denies access
-/// - A network error occurs
+/// * `device_auth` - The device authorization response from [`start_device_flow`]
 pub async fn poll_for_token(device_auth: &DeviceAuthResponse) -> Result<TokenSet> {
     let config = get_provider_config(
         device_auth.provider,
@@ -113,27 +130,32 @@ pub async fn poll_for_token(device_auth: &DeviceAuthResponse) -> Result<TokenSet
             }
         })?;
 
-    // Calculate expiration time
-    let expires_at = token_response.expires_in().map(|duration| {
-        Utc::now() + chrono::Duration::from_std(duration).unwrap_or_default()
-    });
+    let expires_at = token_response
+        .expires_in()
+        .and_then(|duration| chrono::Duration::from_std(duration).ok())
+        .map(|duration| Utc::now() + duration);
 
     Ok(TokenSet {
         access_token: token_response.access_token().secret().to_string(),
-        refresh_token: token_response.refresh_token().map(|t| t.secret().to_string()),
+        refresh_token: token_response
+            .refresh_token()
+            .map(|t| t.secret().to_string()),
         token_type: "Bearer".to_string(),
         expires_at,
-        scope: token_response
-            .scopes()
-            .map(|scopes| scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" ")),
+        scope: token_response.scopes().map(|scopes| {
+            scopes
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }),
     })
 }
 
-/// Open the verification URL in the default browser.
+/// Opens the verification URL in the default browser.
 ///
-/// # Arguments
-///
-/// * `device_auth` - The device authorization response.
+/// Uses the complete URL with the code pre-filled if available,
+/// otherwise falls back to the basic verification URL.
 ///
 /// # Returns
 ///

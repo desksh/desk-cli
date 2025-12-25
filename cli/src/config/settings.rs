@@ -6,22 +6,13 @@ use url::Url;
 use crate::auth::tokens::AuthProvider;
 
 /// Main configuration for desk-cli.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeskConfig {
     /// Authentication settings.
     pub auth: AuthConfig,
     /// API client settings.
     pub api: ApiConfig,
-}
-
-impl Default for DeskConfig {
-    fn default() -> Self {
-        Self {
-            auth: AuthConfig::default(),
-            api: ApiConfig::default(),
-        }
-    }
 }
 
 /// Authentication configuration.

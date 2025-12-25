@@ -59,4 +59,14 @@ async-trait = "0.1"
 http = "1.2"
 
 [dev-dependencies]
-# Test dependencies will be added as needed
+# Async testing
+tokio-test = "0.4"
+
+# HTTP mocking (0.5.x for Rust 2021 edition compatibility)
+wiremock = "0.5"
+
+# Trait mocking
+mockall = "0.13"
+
+# Temp files for tests
+tempfile = "3.15"

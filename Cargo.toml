@@ -28,6 +28,8 @@ module_name_repetitions = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+# External dependency version conflicts are outside our control
+multiple_crate_versions = "allow"
 
 [profile.release]
 lto = true
