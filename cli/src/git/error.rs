@@ -52,3 +52,47 @@ impl GitError {
         matches!(self, Self::Conflict(_))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_not_repository_returns_true() {
+        assert!(GitError::NotARepository.is_not_repository());
+    }
+
+    #[test]
+    fn is_not_repository_returns_false_for_other_errors() {
+        assert!(!GitError::DirtyWorkingDirectory.is_not_repository());
+        assert!(!GitError::BranchNotFound("main".to_string()).is_not_repository());
+        assert!(!GitError::Conflict("merge".to_string()).is_not_repository());
+    }
+
+    #[test]
+    fn is_conflict_returns_true() {
+        assert!(GitError::Conflict("merge conflict".to_string()).is_conflict());
+    }
+
+    #[test]
+    fn is_conflict_returns_false_for_other_errors() {
+        assert!(!GitError::NotARepository.is_conflict());
+        assert!(!GitError::DirtyWorkingDirectory.is_conflict());
+        assert!(!GitError::BranchNotFound("main".to_string()).is_conflict());
+    }
+
+    #[test]
+    fn error_messages_are_user_friendly() {
+        let not_repo = GitError::NotARepository;
+        assert!(not_repo.to_string().contains("git init"));
+
+        let dirty = GitError::DirtyWorkingDirectory;
+        assert!(dirty.to_string().contains("uncommitted"));
+
+        let branch = GitError::BranchNotFound("feature/test".to_string());
+        assert!(branch.to_string().contains("feature/test"));
+
+        let stash = GitError::StashNotFound("my-stash".to_string());
+        assert!(stash.to_string().contains("my-stash"));
+    }
+}

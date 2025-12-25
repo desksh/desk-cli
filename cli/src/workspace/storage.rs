@@ -334,4 +334,49 @@ mod tests {
         let long_name = "a".repeat(101);
         assert!(store.load(&long_name).is_err());
     }
+
+    #[test]
+    fn load_corrupted_json_returns_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileWorkspaceStore::with_dir(temp_dir.path().to_path_buf()).unwrap();
+
+        // Write invalid JSON
+        let path = temp_dir.path().join("corrupted.json");
+        std::fs::write(&path, "{ invalid json }").unwrap();
+
+        let result = store.load("corrupted");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn list_skips_invalid_json_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileWorkspaceStore::with_dir(temp_dir.path().to_path_buf()).unwrap();
+
+        // Save a valid workspace
+        store.save(&create_test_workspace("valid"), false).unwrap();
+
+        // Write an invalid JSON file
+        std::fs::write(temp_dir.path().join("invalid.json"), "not json").unwrap();
+
+        // Write a non-json file (should be skipped)
+        std::fs::write(temp_dir.path().join("readme.txt"), "text file").unwrap();
+
+        let list = store.list().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "valid");
+    }
+
+    #[test]
+    fn exists_returns_true_for_existing() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileWorkspaceStore::with_dir(temp_dir.path().to_path_buf()).unwrap();
+
+        store
+            .save(&create_test_workspace("exists-test"), false)
+            .unwrap();
+
+        assert!(store.exists("exists-test").unwrap());
+        assert!(!store.exists("does-not-exist").unwrap());
+    }
 }

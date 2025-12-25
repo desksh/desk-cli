@@ -38,3 +38,36 @@ impl WorkspaceError {
         matches!(self, Self::NotFound(_))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_not_found_returns_true_for_not_found() {
+        let err = WorkspaceError::NotFound("test".to_string());
+        assert!(err.is_not_found());
+    }
+
+    #[test]
+    fn is_not_found_returns_false_for_other_errors() {
+        assert!(!WorkspaceError::AlreadyExists("test".to_string()).is_not_found());
+        assert!(!WorkspaceError::InvalidName("a".to_string(), "b".to_string()).is_not_found());
+        assert!(!WorkspaceError::Storage("err".to_string()).is_not_found());
+        assert!(!WorkspaceError::Corrupted("err".to_string()).is_not_found());
+    }
+
+    #[test]
+    fn error_messages_are_user_friendly() {
+        let already_exists = WorkspaceError::AlreadyExists("my-ws".to_string());
+        assert!(already_exists.to_string().contains("my-ws"));
+        assert!(already_exists.to_string().contains("--force"));
+
+        let not_found = WorkspaceError::NotFound("missing".to_string());
+        assert!(not_found.to_string().contains("missing"));
+
+        let invalid = WorkspaceError::InvalidName("bad/name".to_string(), "has slash".to_string());
+        assert!(invalid.to_string().contains("bad/name"));
+        assert!(invalid.to_string().contains("has slash"));
+    }
+}

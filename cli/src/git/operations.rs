@@ -475,4 +475,221 @@ mod tests {
         let stashes = ops.stash_list().unwrap();
         assert!(stashes.is_empty());
     }
+
+    #[test]
+    fn status_with_staged_file() {
+        let (temp_dir, repo) = init_test_repo();
+        let ops = Git2Operations::open(temp_dir.path()).unwrap();
+
+        // Create and stage a file
+        let file_path = temp_dir.path().join("staged.txt");
+        fs::write(&file_path, "staged content").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("staged.txt")).unwrap();
+        index.write().unwrap();
+
+        let status = ops.status().unwrap();
+        assert!(status.is_dirty);
+        assert_eq!(status.staged_count, 1);
+    }
+
+    #[test]
+    fn status_with_modified_file() {
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create, stage, and commit a file first
+        let file_path = temp_dir.path().join("tracked.txt");
+        fs::write(&file_path, "initial content").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            let sig = Signature::now("Test", "test@test.com").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Add file", &tree, &[&head])
+                .unwrap();
+        }
+
+        // Now modify the file
+        fs::write(&file_path, "modified content").unwrap();
+
+        let ops = Git2Operations::open(temp_dir.path()).unwrap();
+        let status = ops.status().unwrap();
+        assert!(status.is_dirty);
+        assert_eq!(status.modified_count, 1);
+    }
+
+    #[test]
+    fn stash_and_pop() {
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create and stage a file to have something to stash
+        let file_path = temp_dir.path().join("to_stash.txt");
+        fs::write(&file_path, "content to stash").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index
+                .add_path(std::path::Path::new("to_stash.txt"))
+                .unwrap();
+            index.write().unwrap();
+        }
+
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+
+        // Stash the changes
+        let options = StashOptions {
+            message: Some("test stash".to_string()),
+            include_untracked: false,
+        };
+        let stash_oid = ops.stash(options).unwrap();
+        assert!(!stash_oid.is_empty());
+
+        // Verify stash exists
+        let stashes = ops.stash_list().unwrap();
+        assert_eq!(stashes.len(), 1);
+        assert!(stashes[0].message.contains("test stash"));
+
+        // Pop the stash
+        ops.stash_pop().unwrap();
+
+        // Verify stash is gone
+        let stashes = ops.stash_list().unwrap();
+        assert!(stashes.is_empty());
+    }
+
+    #[test]
+    fn stash_drop() {
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create and stage a file
+        let file_path = temp_dir.path().join("to_stash.txt");
+        fs::write(&file_path, "content").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index
+                .add_path(std::path::Path::new("to_stash.txt"))
+                .unwrap();
+            index.write().unwrap();
+        }
+
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+        ops.stash(StashOptions::default()).unwrap();
+
+        assert_eq!(ops.stash_list().unwrap().len(), 1);
+        ops.stash_drop(0).unwrap();
+        assert!(ops.stash_list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stash_apply_by_name() {
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create and stage a file
+        let file_path = temp_dir.path().join("apply_test.txt");
+        fs::write(&file_path, "content").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index
+                .add_path(std::path::Path::new("apply_test.txt"))
+                .unwrap();
+            index.write().unwrap();
+        }
+
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+        let options = StashOptions {
+            message: Some("unique-stash-name".to_string()),
+            include_untracked: false,
+        };
+        ops.stash(options).unwrap();
+
+        // Apply by name (doesn't remove stash)
+        ops.stash_apply("unique-stash-name").unwrap();
+
+        // Stash should still exist
+        assert_eq!(ops.stash_list().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn stash_apply_not_found() {
+        let (temp_dir, _repo) = init_test_repo();
+        let ops = Git2Operations::open(temp_dir.path()).unwrap();
+
+        let result = ops.stash_apply("nonexistent-stash");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn switch_branch_and_back() {
+        let (temp_dir, _repo) = init_test_repo();
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+
+        let original_branch = ops.current_branch().unwrap();
+
+        // Create and switch to new branch
+        ops.switch_branch(
+            "feature/test",
+            SwitchOptions {
+                create: true,
+                force: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(ops.current_branch().unwrap(), "feature/test");
+
+        // Switch back to original
+        ops.switch_branch(&original_branch, SwitchOptions::default())
+            .unwrap();
+        assert_eq!(ops.current_branch().unwrap(), original_branch);
+    }
+
+    #[test]
+    fn switch_branch_force() {
+        let (temp_dir, _repo) = init_test_repo();
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+
+        // Create a new branch
+        ops.switch_branch(
+            "feature/force-test",
+            SwitchOptions {
+                create: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        // Create uncommitted changes
+        fs::write(temp_dir.path().join("uncommitted.txt"), "changes").unwrap();
+
+        // Force switch should work
+        let original = ops.current_branch().unwrap();
+        ops.switch_branch(
+            "feature/force-test",
+            SwitchOptions {
+                create: false,
+                force: true,
+            },
+        )
+        .unwrap();
+        // We're already on this branch, but force flag was used
+        assert_eq!(ops.current_branch().unwrap(), original);
+    }
+
+    #[test]
+    fn stash_with_untracked() {
+        let (temp_dir, _repo) = init_test_repo();
+
+        // Create an untracked file
+        fs::write(temp_dir.path().join("untracked.txt"), "untracked").unwrap();
+
+        let mut ops = Git2Operations::open(temp_dir.path()).unwrap();
+        let options = StashOptions {
+            message: Some("with untracked".to_string()),
+            include_untracked: true,
+        };
+
+        let result = ops.stash(options);
+        assert!(result.is_ok());
+    }
 }
