@@ -1,4 +1,7 @@
 //! Workspace-specific error types.
+//!
+//! This module defines error types for workspace operations:
+//! - [`WorkspaceError`] - All workspace-related errors with user-friendly messages
 
 use thiserror::Error;
 

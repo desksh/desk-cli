@@ -1,4 +1,10 @@
 //! Git-related types for desk-cli.
+//!
+//! This module defines data structures for git operations:
+//! - [`RepoStatus`] - Current repository state (branch, changes, etc.)
+//! - [`StashEntry`] - A git stash entry
+//! - [`StashOptions`] - Options for creating stashes
+//! - [`SwitchOptions`] - Options for switching branches
 
 use serde::{Deserialize, Serialize};
 

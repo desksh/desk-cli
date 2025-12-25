@@ -1,4 +1,8 @@
 //! Workspace data types for desk-cli.
+//!
+//! This module defines the core data structures for workspace state:
+//! - [`Workspace`] - Saved workspace state including git context
+//! - [`WorkspaceMetadata`] - Extensible metadata for workspace snapshots
 
 use std::path::PathBuf;
 

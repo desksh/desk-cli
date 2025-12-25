@@ -1,4 +1,7 @@
 //! Git-specific error types.
+//!
+//! This module defines error types for git operations:
+//! - [`GitError`] - All git-related errors with user-friendly messages
 
 use thiserror::Error;
 

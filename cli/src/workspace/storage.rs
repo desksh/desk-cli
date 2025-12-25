@@ -1,4 +1,8 @@
 //! Workspace storage operations.
+//!
+//! This module provides persistence for workspace state:
+//! - [`WorkspaceStore`] - Trait for workspace storage operations
+//! - [`FileWorkspaceStore`] - JSON file-based storage implementation
 
 use std::fs;
 use std::path::PathBuf;
@@ -85,10 +89,11 @@ impl FileWorkspaceStore {
     /// Validates a workspace name.
     fn validate_name(name: &str) -> Result<()> {
         if name.is_empty() {
-            return Err(
-                WorkspaceError::InvalidName(name.to_string(), "name cannot be empty".to_string())
-                    .into(),
-            );
+            return Err(WorkspaceError::InvalidName(
+                name.to_string(),
+                "name cannot be empty".to_string(),
+            )
+            .into());
         }
 
         // Check for path traversal or invalid chars

@@ -1,4 +1,8 @@
 //! Git operations abstraction for desk-cli.
+//!
+//! This module provides a trait-based abstraction over git operations:
+//! - [`GitOperations`] - Trait defining git operations for workspace switching
+//! - [`Git2Operations`] - Implementation using the git2 (libgit2) library
 
 use std::path::Path;
 
@@ -152,7 +156,10 @@ impl GitOperations for Git2Operations {
             let commit = head
                 .peel_to_commit()
                 .map_err(|e| GitError::Git2(format!("Cannot get commit: {e}")))?;
-            Ok(format!("HEAD detached at {}", &commit.id().to_string()[..7]))
+            Ok(format!(
+                "HEAD detached at {}",
+                &commit.id().to_string()[..7]
+            ))
         }
     }
 
