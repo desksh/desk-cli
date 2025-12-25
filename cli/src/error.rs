@@ -8,6 +8,9 @@
 
 use thiserror::Error;
 
+use crate::git::GitError;
+use crate::workspace::WorkspaceError;
+
 /// Main error type for desk-cli operations.
 ///
 /// Each variant includes a user-friendly message with actionable recovery steps.
@@ -104,6 +107,14 @@ pub enum DeskError {
     /// URL parsing failed.
     #[error("Invalid URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
+
+    /// Workspace operation error.
+    #[error(transparent)]
+    Workspace(#[from] WorkspaceError),
+
+    /// Git operation error.
+    #[error(transparent)]
+    Git(#[from] GitError),
 }
 
 impl DeskError {
