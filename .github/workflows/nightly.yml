@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload nightly artifact (Unix)
         if: matrix.os != 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desk-nightly-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/desk
@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload nightly artifact (Windows)
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desk-nightly-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/desk.exe
