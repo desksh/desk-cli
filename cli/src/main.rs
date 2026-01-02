@@ -85,5 +85,12 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Clean { execute } => cli::commands::handle_clean(execute),
         Commands::Prompt => cli::commands::handle_prompt(),
         Commands::Init { shell } => cli::commands::handle_init(shell),
+        Commands::Search {
+            query,
+            name_only,
+            branch_only,
+        } => cli::commands::handle_search(&query, name_only, branch_only),
+        Commands::Completions { shell } => cli::commands::handle_completions(shell),
+        Commands::Doctor => cli::commands::handle_doctor(),
     }
 }

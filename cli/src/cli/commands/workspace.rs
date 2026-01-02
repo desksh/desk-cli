@@ -804,6 +804,203 @@ end
 # end
 "#;
 
+/// Handles the `desk search <query>` command.
+///
+/// Searches workspaces by name, branch, or description.
+///
+/// # Arguments
+///
+/// * `query` - Search query string
+/// * `name_only` - Only search workspace names
+/// * `branch_only` - Only search branch names
+pub fn handle_search(query: &str, name_only: bool, branch_only: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+    let workspaces = store.list()?;
+
+    let query_lower = query.to_lowercase();
+
+    let matches: Vec<_> = workspaces
+        .iter()
+        .filter(|ws| {
+            if name_only {
+                ws.name.to_lowercase().contains(&query_lower)
+            } else if branch_only {
+                ws.branch.to_lowercase().contains(&query_lower)
+            } else {
+                ws.name.to_lowercase().contains(&query_lower)
+                    || ws.branch.to_lowercase().contains(&query_lower)
+                    || ws.description
+                        .as_ref()
+                        .is_some_and(|d| d.to_lowercase().contains(&query_lower))
+            }
+        })
+        .collect();
+
+    if matches.is_empty() {
+        println!("No workspaces found matching '{query}'.");
+        return Ok(());
+    }
+
+    println!("Found {} workspace(s):\n", matches.len());
+
+    for ws in matches {
+        println!("  {}", ws.name);
+        println!("    Branch: {}", ws.branch);
+        if let Some(ref desc) = ws.description {
+            println!("    Description: {desc}");
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk completions <shell>` command.
+///
+/// Generates shell completion scripts.
+pub fn handle_completions(shell: ShellType) -> Result<()> {
+    use clap::CommandFactory;
+    use clap_complete::{generate, Shell};
+
+    let mut cmd = crate::cli::Cli::command();
+    let shell = match shell {
+        ShellType::Bash => Shell::Bash,
+        ShellType::Zsh => Shell::Zsh,
+        ShellType::Fish => Shell::Fish,
+    };
+
+    generate(shell, &mut cmd, "desk", &mut std::io::stdout());
+
+    Ok(())
+}
+
+/// Handles the `desk doctor` command.
+///
+/// Checks desk installation and diagnoses issues.
+pub fn handle_doctor() -> Result<()> {
+    println!("Desk Doctor\n");
+    println!("Checking installation...\n");
+
+    let mut issues = 0;
+
+    // Check 1: Config directory
+    print!("  Config directory: ");
+    match crate::config::paths::config_dir() {
+        Ok(path) => {
+            if path.exists() {
+                println!("OK ({})", path.display());
+            } else {
+                println!("OK (will be created: {})", path.display());
+            }
+        }
+        Err(e) => {
+            println!("ERROR - {e}");
+            issues += 1;
+        }
+    }
+
+    // Check 2: Data directory
+    print!("  Data directory: ");
+    match crate::config::paths::data_dir() {
+        Ok(path) => {
+            if path.exists() {
+                println!("OK ({})", path.display());
+            } else {
+                println!("OK (will be created: {})", path.display());
+            }
+        }
+        Err(e) => {
+            println!("ERROR - {e}");
+            issues += 1;
+        }
+    }
+
+    // Check 3: Workspaces directory
+    print!("  Workspaces directory: ");
+    match crate::config::paths::workspaces_dir() {
+        Ok(path) => {
+            if path.exists() {
+                // Count workspaces
+                let store = FileWorkspaceStore::new()?;
+                let count = store.list()?.len();
+                println!("OK ({} workspace(s))", count);
+            } else {
+                println!("OK (will be created)");
+            }
+        }
+        Err(e) => {
+            println!("ERROR - {e}");
+            issues += 1;
+        }
+    }
+
+    // Check 4: Git access
+    print!("  Git repository: ");
+    match Git2Operations::from_current_dir() {
+        Ok(git) => match git.status() {
+            Ok(status) => {
+                println!("OK (branch: {}, {})",
+                    status.branch,
+                    if status.is_dirty { "dirty" } else { "clean" }
+                );
+            }
+            Err(e) => {
+                println!("WARNING - {e}");
+            }
+        },
+        Err(_) => {
+            println!("N/A (not in a git repository)");
+        }
+    }
+
+    // Check 5: Config file
+    print!("  Configuration: ");
+    match crate::config::load_config() {
+        Ok(config) => {
+            println!("OK (API: {})", config.api.base_url);
+        }
+        Err(e) => {
+            println!("ERROR - {e}");
+            issues += 1;
+        }
+    }
+
+    // Check 6: Authentication
+    print!("  Authentication: ");
+    match crate::auth::credentials::CredentialStore::new() {
+        Ok(store) => match store.load() {
+            Ok(Some(creds)) => {
+                if creds.is_api_token_expired() {
+                    println!("WARNING (token expired)");
+                } else {
+                    println!("OK (logged in)");
+                }
+            }
+            Ok(None) => {
+                println!("N/A (not logged in)");
+            }
+            Err(e) => {
+                println!("ERROR - {e}");
+                issues += 1;
+            }
+        },
+        Err(e) => {
+            println!("ERROR - {e}");
+            issues += 1;
+        }
+    }
+
+    // Summary
+    println!();
+    if issues == 0 {
+        println!("All checks passed!");
+    } else {
+        println!("{} issue(s) found.", issues);
+    }
+
+    Ok(())
+}
+
 /// Saves the current git state as a workspace.
 ///
 /// Captures the current branch, commit SHA, and optionally stashes uncommitted

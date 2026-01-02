@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 # CLI Framework
 clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.5"
 
 # Async Runtime
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time", "sync"] }

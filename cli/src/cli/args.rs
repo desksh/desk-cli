@@ -189,6 +189,35 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: ShellType,
     },
+
+    /// Search workspaces by name, branch, or description.
+    Search {
+        /// Search query (matches name, branch, or description).
+        query: String,
+
+        /// Only search in workspace names.
+        #[arg(long)]
+        name_only: bool,
+
+        /// Only search in branch names.
+        #[arg(long)]
+        branch_only: bool,
+    },
+
+    /// Generate shell completion scripts.
+    ///
+    /// Outputs completion script for the specified shell.
+    /// Follow shell-specific instructions to install.
+    Completions {
+        /// Shell to generate completions for.
+        #[arg(value_enum)]
+        shell: ShellType,
+    },
+
+    /// Check desk installation and diagnose issues.
+    ///
+    /// Verifies configuration, storage, git access, and API connectivity.
+    Doctor,
 }
 
 /// Supported shell types for init command.
