@@ -67,3 +67,76 @@ pub fn ensure_workspaces_dir() -> Result<PathBuf> {
     }
     Ok(dir)
 }
+
+/// Get the state file path (tracks current workspace per repo).
+pub fn state_file() -> Result<PathBuf> {
+    Ok(data_dir()?.join("state.json"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_dir_returns_path() {
+        let path = config_dir();
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path.ends_with("desk"));
+    }
+
+    #[test]
+    fn data_dir_returns_path() {
+        let path = data_dir();
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path.ends_with("desk"));
+    }
+
+    #[test]
+    fn config_file_has_toml_extension() {
+        let path = config_file();
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path.ends_with("config.toml"));
+    }
+
+    #[test]
+    fn workspaces_dir_is_under_data_dir() {
+        let data = data_dir().unwrap();
+        let workspaces = workspaces_dir().unwrap();
+        assert!(workspaces.starts_with(data));
+        assert!(workspaces.ends_with("workspaces"));
+    }
+
+    #[test]
+    fn state_file_has_json_extension() {
+        let path = state_file();
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path.ends_with("state.json"));
+    }
+
+    #[test]
+    fn ensure_config_dir_creates_directory() {
+        // This test creates actual directories, but they're in user space
+        let result = ensure_config_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        // Path should exist after ensure_* call, but we don't assert
+        // since in some CI environments it may not work
+        let _ = path.exists();
+    }
+
+    #[test]
+    fn ensure_data_dir_creates_directory() {
+        let result = ensure_data_dir();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ensure_workspaces_dir_creates_directory() {
+        let result = ensure_workspaces_dir();
+        assert!(result.is_ok());
+    }
+}

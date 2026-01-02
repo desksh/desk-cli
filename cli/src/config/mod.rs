@@ -2,9 +2,11 @@
 
 pub mod paths;
 pub mod settings;
+pub mod state;
 
 pub use paths::config_file;
 pub use settings::{ApiConfig, DeskConfig};
+pub use state::DeskState;
 
 use std::path::Path;
 

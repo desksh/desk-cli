@@ -3,4 +3,4 @@
 pub mod api;
 pub mod middleware;
 
-pub use api::DeskApiClient;
+pub use api::{DeskApiClient, RemoteWorkspace, WorkspaceState, WorkspaceStateMetadata};

@@ -139,3 +139,81 @@ impl DeskConfig {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desk_config_default_values() {
+        let config = DeskConfig::default();
+        assert_eq!(config.api.base_url.as_str(), "https://api.getdesk.dev/");
+        assert_eq!(config.api.timeout_secs, 30);
+        assert_eq!(config.api.max_retries, 3);
+    }
+
+    #[test]
+    fn auth_config_default_provider_is_github() {
+        let config = AuthConfig::default();
+        assert!(matches!(config.default_provider, AuthProvider::GitHub));
+    }
+
+    #[test]
+    fn providers_config_defaults_to_enabled() {
+        let config = ProvidersConfig::default();
+        assert!(config.github.enabled);
+        assert!(config.google.enabled);
+        assert!(config.github.client_id.is_none());
+        assert!(config.google.client_id.is_none());
+    }
+
+    #[test]
+    fn api_config_serialization_roundtrip() {
+        let config = ApiConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let restored: ApiConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.base_url.as_str(), restored.base_url.as_str());
+        assert_eq!(config.timeout_secs, restored.timeout_secs);
+        assert_eq!(config.max_retries, restored.max_retries);
+    }
+
+    #[test]
+    fn desk_config_serialization_roundtrip() {
+        let config = DeskConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let restored: DeskConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.api.base_url.as_str(), restored.api.base_url.as_str());
+        assert!(matches!(
+            restored.auth.default_provider,
+            AuthProvider::GitHub
+        ));
+    }
+
+    #[test]
+    fn api_config_custom_url_parses() {
+        let json = r#"{"base_url":"https://custom.example.com","timeout_secs":60,"max_retries":5}"#;
+        let config: ApiConfig = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.base_url.as_str(), "https://custom.example.com/");
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.max_retries, 5);
+    }
+
+    #[test]
+    fn provider_config_with_custom_client_id() {
+        let json = r#"{"enabled":true,"client_id":"my-custom-id"}"#;
+        let config: ProviderConfig = serde_json::from_str(json).unwrap();
+
+        assert!(config.enabled);
+        assert_eq!(config.client_id.as_deref(), Some("my-custom-id"));
+    }
+
+    #[test]
+    fn env_constants_are_defined() {
+        assert_eq!(env::API_URL, "DESK_API_URL");
+        assert_eq!(env::AUTH_PROVIDER, "DESK_AUTH_PROVIDER");
+        assert_eq!(env::LOG_LEVEL, "DESK_LOG");
+    }
+}

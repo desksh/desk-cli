@@ -15,7 +15,7 @@ mod workspace;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use crate::cli::{AuthCommands, Cli, Commands};
+use crate::cli::{AuthCommands, Cli, Commands, SyncCommands};
 use crate::error::Result;
 
 #[tokio::main]
@@ -48,5 +48,76 @@ async fn run(cli: Cli) -> Result<()> {
             AuthCommands::Logout => cli::commands::handle_logout().await,
             AuthCommands::Status => cli::commands::handle_status().await,
         },
+        Commands::Open {
+            name,
+            description,
+            force,
+            interactive,
+        } => cli::commands::handle_open(name, description, force, interactive),
+        Commands::List { tag, archived, all } => cli::commands::handle_list(tag, archived, all),
+        Commands::Status => cli::commands::handle_workspace_status(),
+        Commands::Close { switch_to } => cli::commands::handle_close(switch_to),
+        Commands::Sync { command } => match command {
+            SyncCommands::Push { name, force } => {
+                cli::commands::handle_sync_push(name, force).await
+            },
+            SyncCommands::Pull { name, force } => {
+                cli::commands::handle_sync_pull(name, force).await
+            },
+            SyncCommands::Status => cli::commands::handle_sync_status().await,
+        },
+        Commands::Delete { name, cloud, yes } => {
+            cli::commands::handle_delete(&name, cloud, yes).await
+        },
+        Commands::Rename {
+            name,
+            new_name,
+            cloud,
+        } => cli::commands::handle_rename(&name, &new_name, cloud).await,
+        Commands::Info { name } => cli::commands::handle_info(&name),
+        Commands::Clone { name, new_name } => cli::commands::handle_clone(&name, &new_name),
+        Commands::Describe {
+            name,
+            description,
+            cloud,
+        } => cli::commands::handle_describe(&name, &description, cloud).await,
+        Commands::Export { name, output } => cli::commands::handle_export(&name, output),
+        Commands::Import { file, name, force } => cli::commands::handle_import(&file, name, force),
+        Commands::Clean { execute } => cli::commands::handle_clean(execute),
+        Commands::Prompt => {
+            cli::commands::handle_prompt();
+            Ok(())
+        },
+        Commands::Init { shell } => {
+            cli::commands::handle_init(shell);
+            Ok(())
+        },
+        Commands::Search {
+            query,
+            name_only,
+            branch_only,
+        } => cli::commands::handle_search(&query, name_only, branch_only),
+        Commands::Completions { shell } => {
+            cli::commands::handle_completions(shell);
+            Ok(())
+        },
+        Commands::Doctor => cli::commands::handle_doctor(),
+        Commands::History { limit, repo_only } => cli::commands::handle_history(limit, repo_only),
+        Commands::Config { key, value, list } => {
+            cli::commands::handle_config(key.as_deref(), value.as_deref(), list)
+        },
+        Commands::Tag { name, command } => cli::commands::handle_tag(&name, command),
+        Commands::Archive { name } => cli::commands::handle_archive(&name),
+        Commands::Unarchive { name } => cli::commands::handle_unarchive(&name),
+        Commands::Alias { command } => cli::commands::handle_alias(command),
+        Commands::Diff {
+            workspace1,
+            workspace2,
+        } => cli::commands::handle_diff(&workspace1, &workspace2),
+        Commands::Stats => cli::commands::handle_stats(),
+        Commands::Hooks { command } => cli::commands::handle_hooks(command),
+        Commands::Watch { interval, name } => cli::commands::handle_watch(interval, name),
+        Commands::Note { name, command } => cli::commands::handle_note(&name, command),
+        Commands::Bulk { command } => cli::commands::handle_bulk(command),
     }
 }
