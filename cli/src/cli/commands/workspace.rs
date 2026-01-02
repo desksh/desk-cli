@@ -9,7 +9,11 @@
 //! These commands use the [`crate::workspace`] module for persistence and
 //! the [`crate::git`] module for git operations.
 
-use crate::error::Result;
+use std::io::{self, Write};
+
+use crate::client::DeskApiClient;
+use crate::config::load_config;
+use crate::error::{DeskError, Result};
 use crate::git::{Git2Operations, GitOperations, StashOptions, SwitchOptions};
 use crate::workspace::{FileWorkspaceStore, Workspace, WorkspaceStore};
 
@@ -160,6 +164,95 @@ pub fn handle_close(switch_to: Option<String>) -> Result<()> {
     } else {
         println!("Workspace closed.");
         println!("\nUse 'desk open <name>' to switch to another workspace.");
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk delete <name>` command.
+///
+/// Deletes a workspace locally and optionally from the cloud.
+///
+/// # Arguments
+///
+/// * `name` - The workspace name to delete
+/// * `cloud` - If true, also delete from the cloud (if synced)
+/// * `yes` - If true, skip confirmation prompt
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Workspace doesn't exist
+/// - Cloud deletion fails (when `--cloud` is specified)
+/// - User cancels the operation
+pub async fn handle_delete(name: &str, cloud: bool, yes: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    // Load the workspace to check if it exists and get remote_id
+    let workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    // Check if workspace is synced to cloud
+    let is_synced = workspace.metadata.remote_id.is_some();
+    let remote_id = workspace.metadata.remote_id.clone();
+
+    // Confirm deletion unless --yes is specified
+    if !yes {
+        let cloud_msg = if cloud && is_synced {
+            " (including cloud copy)"
+        } else if is_synced && !cloud {
+            " (cloud copy will be preserved)"
+        } else {
+            ""
+        };
+
+        print!("Delete workspace '{name}'{cloud_msg}? [y/N] ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Delete from cloud if requested and synced
+    if cloud && is_synced {
+        if let Some(ref id) = remote_id {
+            let config = load_config()?;
+            let client = DeskApiClient::new(&config.api)?;
+
+            // Load credentials
+            if !client.load_credentials().await? {
+                return Err(DeskError::NotAuthenticated);
+            }
+
+            match client.delete_workspace(id).await {
+                Ok(()) => {
+                    println!("Deleted from cloud.");
+                }
+                Err(DeskError::SubscriptionRequired) => {
+                    println!("Warning: Could not delete from cloud (Pro subscription required).");
+                }
+                Err(e) => {
+                    println!("Warning: Failed to delete from cloud: {e}");
+                }
+            }
+        }
+    }
+
+    // Delete locally
+    if store.delete(name)? {
+        println!("Deleted workspace '{name}'.");
+    } else {
+        println!("Workspace '{name}' was already deleted.");
     }
 
     Ok(())

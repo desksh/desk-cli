@@ -71,6 +71,22 @@ pub enum Commands {
         #[command(subcommand)]
         command: SyncCommands,
     },
+
+    /// Delete a workspace.
+    ///
+    /// Removes the workspace locally and optionally from the cloud.
+    Delete {
+        /// Name of the workspace to delete.
+        name: String,
+
+        /// Also delete from the cloud (if synced).
+        #[arg(long)]
+        cloud: bool,
+
+        /// Skip confirmation prompt.
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 /// Sync subcommands.

@@ -65,5 +65,8 @@ async fn run(cli: Cli) -> Result<()> {
             }
             SyncCommands::Status => cli::commands::handle_sync_status().await,
         },
+        Commands::Delete { name, cloud, yes } => {
+            cli::commands::handle_delete(&name, cloud, yes).await
+        }
     }
 }
