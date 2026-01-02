@@ -346,6 +346,93 @@ pub async fn handle_rename(name: &str, new_name: &str, cloud: bool) -> Result<()
     Ok(())
 }
 
+/// Handles the `desk info <name>` command.
+///
+/// Shows detailed information about a workspace.
+///
+/// # Arguments
+///
+/// * `name` - The workspace name to inspect
+///
+/// # Errors
+///
+/// Returns an error if the workspace doesn't exist.
+pub fn handle_info(name: &str) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    let workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    println!("Workspace: {}\n", workspace.name);
+
+    // Description
+    if let Some(ref desc) = workspace.description {
+        println!("  Description: {desc}");
+    }
+
+    // Git state
+    println!("  Repository:  {}", workspace.repo_path.display());
+    println!("  Branch:      {}", workspace.branch);
+    println!("  Commit:      {}", workspace.commit_sha);
+
+    if let Some(ref stash) = workspace.stash_name {
+        println!("  Stash:       {stash}");
+    }
+
+    // Timestamps
+    println!();
+    println!(
+        "  Created:     {}",
+        workspace.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+    println!(
+        "  Updated:     {}",
+        workspace.updated_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    // Metadata
+    if workspace.metadata.was_dirty.is_some() || workspace.metadata.uncommitted_files.is_some() {
+        println!();
+        println!("  State at save:");
+        if let Some(dirty) = workspace.metadata.was_dirty {
+            println!(
+                "    Working directory: {}",
+                if dirty { "dirty" } else { "clean" }
+            );
+        }
+        if let Some(count) = workspace.metadata.uncommitted_files {
+            println!("    Uncommitted files: {count}");
+        }
+    }
+
+    // Sync status
+    println!();
+    if workspace.metadata.remote_id.is_some() {
+        println!("  Sync status: synced");
+        if let Some(ref id) = workspace.metadata.remote_id {
+            println!("    Remote ID: {id}");
+        }
+        if let Some(version) = workspace.metadata.remote_version {
+            println!("    Version:   {version}");
+        }
+        if let Some(synced_at) = workspace.metadata.last_synced_at {
+            println!(
+                "    Last sync: {}",
+                synced_at.format("%Y-%m-%d %H:%M:%S UTC")
+            );
+        }
+    } else {
+        println!("  Sync status: local only");
+    }
+
+    Ok(())
+}
+
 /// Saves the current git state as a workspace.
 ///
 /// Captures the current branch, commit SHA, and optionally stashes uncommitted

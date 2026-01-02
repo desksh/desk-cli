@@ -73,5 +73,6 @@ async fn run(cli: Cli) -> Result<()> {
             new_name,
             cloud,
         } => cli::commands::handle_rename(&name, &new_name, cloud).await,
+        Commands::Info { name } => cli::commands::handle_info(&name),
     }
 }

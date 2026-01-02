@@ -102,6 +102,15 @@ pub enum Commands {
         #[arg(long)]
         cloud: bool,
     },
+
+    /// Show detailed information about a workspace.
+    ///
+    /// Displays all workspace metadata including git state, sync status,
+    /// and timestamps.
+    Info {
+        /// Name of the workspace to inspect.
+        name: String,
+    },
 }
 
 /// Sync subcommands.
