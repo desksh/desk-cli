@@ -25,9 +25,10 @@ use crate::workspace::{FileWorkspaceStore, Workspace, WorkspaceStore};
 ///
 /// # Arguments
 ///
-/// * `name` - The workspace name to open or create
+/// * `name` - The workspace name to open or create (optional if interactive)
 /// * `description` - Optional description for a new workspace
 /// * `force` - If true, overwrites an existing workspace with current state
+/// * `interactive` - If true, show interactive selection menu
 ///
 /// # Errors
 ///
@@ -35,35 +36,64 @@ use crate::workspace::{FileWorkspaceStore, Workspace, WorkspaceStore};
 /// - Not in a git repository
 /// - Workspace storage operations fail
 /// - Git operations (branch switch, stash) fail
-pub fn handle_open(name: &str, description: Option<String>, force: bool) -> Result<()> {
+pub fn handle_open(
+    name: Option<String>,
+    description: Option<String>,
+    force: bool,
+    interactive: bool,
+) -> Result<()> {
+    // Handle interactive mode
+    if interactive {
+        return handle_interactive_open();
+    }
+
+    // Name is required for non-interactive mode
+    let name = match name {
+        Some(n) => n,
+        None => {
+            println!("Workspace name required. Use --interactive to select from a list.");
+            std::process::exit(1);
+        }
+    };
+
+    // Resolve alias if applicable
+    let state = DeskState::load()?;
+    let resolved_name = state.resolve_alias(&name);
+
     let store = FileWorkspaceStore::new()?;
     let mut git = Git2Operations::from_current_dir()?;
     let repo_path = std::env::current_dir()?;
 
     // Check if workspace already exists
-    if let Some(existing) = store.load(name)? {
+    if let Some(mut existing) = store.load(&resolved_name)? {
         if force {
             // Save current state first, then restore the existing workspace
-            save_current_state(&store, &mut git, name, description, true)?;
-            println!("Workspace '{name}' updated with current state.");
+            save_current_state(&store, &mut git, &resolved_name, description, true)?;
+            println!("Workspace '{}' updated with current state.", resolved_name);
         } else {
             // Restore the existing workspace
             restore_workspace(&mut git, &existing)?;
-            println!("Restored workspace '{name}'.");
+            println!("Restored workspace '{}'.", resolved_name);
             println!("  Branch: {}", existing.branch);
             if existing.stash_name.is_some() {
                 println!("  Stashed changes applied.");
             }
+
+            // Update usage stats
+            existing.metadata.open_count += 1;
+            existing.metadata.last_opened_at = Some(chrono::Utc::now());
+            store.save(&existing, true)?;
         }
     } else {
         // Create new workspace from current state
-        save_current_state(&store, &mut git, name, description, false)?;
-        println!("Created workspace '{name}'.");
+        save_current_state(&store, &mut git, &resolved_name, description, false)?;
+        println!("Created workspace '{}'.", resolved_name);
     }
 
     // Track current workspace in state
     let mut state = DeskState::load()?;
-    state.set_current(&repo_path, name);
+    state.set_current(&repo_path, &resolved_name);
+    state.record_workspace_opened(&repo_path);
     state.save()?;
 
     Ok(())
@@ -73,10 +103,16 @@ pub fn handle_open(name: &str, description: Option<String>, force: bool) -> Resu
 ///
 /// Lists all saved workspaces with their details, sorted by most recently updated.
 ///
+/// # Arguments
+///
+/// * `tag` - Optional tag to filter by
+/// * `archived` - If true, show only archived workspaces
+/// * `all` - If true, show all workspaces including archived
+///
 /// # Errors
 ///
 /// Returns an error if workspace storage cannot be accessed.
-pub fn handle_list() -> Result<()> {
+pub fn handle_list(tag: Option<String>, archived: bool, all: bool) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
     let workspaces = store.list()?;
 
@@ -86,9 +122,59 @@ pub fn handle_list() -> Result<()> {
         return Ok(());
     }
 
-    println!("Saved workspaces:\n");
-    for ws in workspaces {
-        println!("  {} ", ws.name);
+    // Filter workspaces
+    let filtered: Vec<_> = workspaces
+        .iter()
+        .filter(|ws| {
+            // Archive filter
+            let archive_match = if archived {
+                ws.metadata.archived
+            } else if all {
+                true
+            } else {
+                !ws.metadata.archived
+            };
+
+            // Tag filter
+            let tag_match = if let Some(ref t) = tag {
+                ws.metadata.tags.contains(t)
+            } else {
+                true
+            };
+
+            archive_match && tag_match
+        })
+        .collect();
+
+    if filtered.is_empty() {
+        if tag.is_some() {
+            println!("No workspaces found with tag '{}'.", tag.unwrap());
+        } else if archived {
+            println!("No archived workspaces.");
+        } else {
+            println!("No active workspaces.");
+        }
+        return Ok(());
+    }
+
+    let header = if archived {
+        "Archived workspaces"
+    } else if all {
+        "All workspaces"
+    } else {
+        "Saved workspaces"
+    };
+
+    println!("{}:\n", header);
+    for ws in filtered {
+        let archive_marker = if ws.metadata.archived { " [archived]" } else { "" };
+        let tags_str = if ws.metadata.tags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", ws.metadata.tags.join(", "))
+        };
+
+        println!("  {}{}{}", ws.name, archive_marker, tags_str);
         println!("    Branch: {}", ws.branch);
         if let Some(desc) = &ws.description {
             println!("    Description: {desc}");
@@ -1143,6 +1229,656 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
             println!("Cleared {count} tag(s) from '{name}'.");
         }
     }
+
+    Ok(())
+}
+
+/// Handles the `desk archive <name>` command.
+///
+/// Archives a workspace (hides from default list).
+pub fn handle_archive(name: &str) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    if workspace.metadata.archived {
+        println!("Workspace '{name}' is already archived.");
+        return Ok(());
+    }
+
+    workspace.metadata.archived = true;
+    workspace.touch();
+    store.save(&workspace, true)?;
+
+    println!("Archived workspace '{name}'.");
+    println!("Use 'desk list --archived' to see archived workspaces.");
+
+    Ok(())
+}
+
+/// Handles the `desk unarchive <name>` command.
+///
+/// Unarchives a workspace (restores to default list).
+pub fn handle_unarchive(name: &str) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    if !workspace.metadata.archived {
+        println!("Workspace '{name}' is not archived.");
+        return Ok(());
+    }
+
+    workspace.metadata.archived = false;
+    workspace.touch();
+    store.save(&workspace, true)?;
+
+    println!("Unarchived workspace '{name}'.");
+
+    Ok(())
+}
+
+/// Handles the `desk alias` command.
+///
+/// Manages workspace aliases.
+pub fn handle_alias(command: crate::cli::AliasCommands) -> Result<()> {
+    use crate::cli::AliasCommands;
+
+    let mut state = DeskState::load()?;
+
+    match command {
+        AliasCommands::Set { alias, workspace } => {
+            // Verify workspace exists
+            let store = FileWorkspaceStore::new()?;
+            if !store.exists(&workspace)? {
+                println!("Workspace '{workspace}' not found.");
+                std::process::exit(1);
+            }
+
+            state.set_alias(&alias, &workspace);
+            state.save()?;
+            println!("Created alias '{alias}' -> '{workspace}'.");
+        }
+        AliasCommands::Remove { alias } => {
+            if state.remove_alias(&alias) {
+                state.save()?;
+                println!("Removed alias '{alias}'.");
+            } else {
+                println!("Alias '{alias}' not found.");
+            }
+        }
+        AliasCommands::List => {
+            let aliases = state.get_aliases();
+            if aliases.is_empty() {
+                println!("No aliases defined.");
+                println!("\nCreate one with: desk alias set <alias> <workspace>");
+            } else {
+                println!("Workspace aliases:\n");
+                for (alias, workspace) in aliases {
+                    println!("  {alias} -> {workspace}");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk diff <ws1> <ws2>` command.
+///
+/// Compares two workspaces.
+pub fn handle_diff(workspace1: &str, workspace2: &str) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    let ws1 = match store.load(workspace1)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{workspace1}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    let ws2 = match store.load(workspace2)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{workspace2}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    println!("Comparing workspaces:\n");
+    println!("  {} vs {}\n", workspace1, workspace2);
+
+    // Branch comparison
+    if ws1.branch == ws2.branch {
+        println!("  Branch:      {} (same)", ws1.branch);
+    } else {
+        println!("  Branch:      {} vs {}", ws1.branch, ws2.branch);
+    }
+
+    // Commit comparison
+    if ws1.commit_sha == ws2.commit_sha {
+        println!("  Commit:      {} (same)", &ws1.commit_sha[..7]);
+    } else {
+        println!("  Commit:      {} vs {}", &ws1.commit_sha[..7], &ws2.commit_sha[..7]);
+    }
+
+    // Repository path
+    if ws1.repo_path == ws2.repo_path {
+        println!("  Repository:  {} (same)", ws1.repo_path.display());
+    } else {
+        println!("  Repository:  {} vs {}", ws1.repo_path.display(), ws2.repo_path.display());
+    }
+
+    // Stash
+    match (&ws1.stash_name, &ws2.stash_name) {
+        (Some(s1), Some(s2)) if s1 == s2 => {
+            println!("  Stash:       {} (same)", s1);
+        }
+        (Some(s1), Some(s2)) => {
+            println!("  Stash:       {} vs {}", s1, s2);
+        }
+        (Some(s1), None) => {
+            println!("  Stash:       {} vs (none)", s1);
+        }
+        (None, Some(s2)) => {
+            println!("  Stash:       (none) vs {}", s2);
+        }
+        (None, None) => {
+            println!("  Stash:       (none)");
+        }
+    }
+
+    // Tags
+    println!();
+    let tags1: std::collections::HashSet<_> = ws1.metadata.tags.iter().collect();
+    let tags2: std::collections::HashSet<_> = ws2.metadata.tags.iter().collect();
+
+    let only_in_1: Vec<_> = tags1.difference(&tags2).collect();
+    let only_in_2: Vec<_> = tags2.difference(&tags1).collect();
+    let common: Vec<_> = tags1.intersection(&tags2).collect();
+
+    if !common.is_empty() {
+        println!("  Common tags: {}", common.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+    }
+    if !only_in_1.is_empty() {
+        println!("  Only in {}: {}", workspace1, only_in_1.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+    }
+    if !only_in_2.is_empty() {
+        println!("  Only in {}: {}", workspace2, only_in_2.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+    }
+
+    // Timestamps
+    println!();
+    println!("  Created:     {} vs {}",
+        ws1.created_at.format("%Y-%m-%d %H:%M"),
+        ws2.created_at.format("%Y-%m-%d %H:%M")
+    );
+    println!("  Updated:     {} vs {}",
+        ws1.updated_at.format("%Y-%m-%d %H:%M"),
+        ws2.updated_at.format("%Y-%m-%d %H:%M")
+    );
+
+    Ok(())
+}
+
+/// Handles the `desk stats` command.
+///
+/// Shows workspace usage statistics.
+pub fn handle_stats() -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+    let workspaces = store.list()?;
+    let state = DeskState::load()?;
+
+    if workspaces.is_empty() {
+        println!("No workspaces found.");
+        return Ok(());
+    }
+
+    println!("Workspace Statistics\n");
+
+    // Total counts
+    let total = workspaces.len();
+    let archived = workspaces.iter().filter(|w| w.metadata.archived).count();
+    let synced = workspaces.iter().filter(|w| w.metadata.remote_id.is_some()).count();
+
+    println!("  Total workspaces:    {}", total);
+    println!("  Active:              {}", total - archived);
+    println!("  Archived:            {}", archived);
+    println!("  Synced to cloud:     {}", synced);
+
+    // Most used workspaces (by open count)
+    let mut by_usage: Vec<_> = workspaces.iter()
+        .filter(|w| w.metadata.open_count > 0)
+        .collect();
+    by_usage.sort_by(|a, b| b.metadata.open_count.cmp(&a.metadata.open_count));
+
+    if !by_usage.is_empty() {
+        println!("\n  Most used:");
+        for ws in by_usage.iter().take(5) {
+            println!("    {} ({} opens)", ws.name, ws.metadata.open_count);
+        }
+    }
+
+    // Most time spent
+    let mut by_time: Vec<_> = workspaces.iter()
+        .filter(|w| w.metadata.total_time_secs > 0)
+        .collect();
+    by_time.sort_by(|a, b| b.metadata.total_time_secs.cmp(&a.metadata.total_time_secs));
+
+    if !by_time.is_empty() {
+        println!("\n  Most time spent:");
+        for ws in by_time.iter().take(5) {
+            let hours = ws.metadata.total_time_secs / 3600;
+            let mins = (ws.metadata.total_time_secs % 3600) / 60;
+            println!("    {} ({}h {}m)", ws.name, hours, mins);
+        }
+    }
+
+    // Recently used
+    let mut by_recent: Vec<_> = workspaces.iter()
+        .filter(|w| w.metadata.last_opened_at.is_some())
+        .collect();
+    by_recent.sort_by(|a, b| {
+        b.metadata.last_opened_at.cmp(&a.metadata.last_opened_at)
+    });
+
+    if !by_recent.is_empty() {
+        println!("\n  Recently used:");
+        for ws in by_recent.iter().take(5) {
+            if let Some(opened) = ws.metadata.last_opened_at {
+                let ago = format_time_ago(opened);
+                println!("    {} ({})", ws.name, ago);
+            }
+        }
+    }
+
+    // Tags breakdown
+    let mut tag_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for ws in &workspaces {
+        for tag in &ws.metadata.tags {
+            *tag_counts.entry(tag.as_str()).or_insert(0) += 1;
+        }
+    }
+
+    if !tag_counts.is_empty() {
+        println!("\n  Tags:");
+        let mut sorted_tags: Vec<_> = tag_counts.iter().collect();
+        sorted_tags.sort_by(|a, b| b.1.cmp(a.1));
+        for (tag, count) in sorted_tags.iter().take(10) {
+            println!("    {} ({})", tag, count);
+        }
+    }
+
+    // History stats
+    println!("\n  History entries:     {}", state.history.len());
+    println!("  Aliases defined:     {}", state.aliases.len());
+
+    Ok(())
+}
+
+/// Handles the `desk hooks` command.
+///
+/// Manages workspace switch hooks.
+pub fn handle_hooks(command: crate::cli::HookCommands) -> Result<()> {
+    use crate::cli::{HookCommands, HookType};
+
+    let mut state = DeskState::load()?;
+
+    match command {
+        HookCommands::Add { hook_type, command } => {
+            match hook_type {
+                HookType::PreSwitch => {
+                    state.add_pre_switch_hook(command.clone());
+                    println!("Added pre-switch hook: {command}");
+                }
+                HookType::PostSwitch => {
+                    state.add_post_switch_hook(command.clone());
+                    println!("Added post-switch hook: {command}");
+                }
+            }
+            state.save()?;
+        }
+        HookCommands::Remove { hook_type, index } => {
+            let removed = match hook_type {
+                HookType::PreSwitch => state.remove_pre_switch_hook(index),
+                HookType::PostSwitch => state.remove_post_switch_hook(index),
+            };
+            if removed {
+                state.save()?;
+                println!("Removed hook at index {index}.");
+            } else {
+                println!("No hook found at index {index}.");
+            }
+        }
+        HookCommands::List => {
+            println!("Workspace hooks:\n");
+
+            if state.pre_switch_hooks.is_empty() && state.post_switch_hooks.is_empty() {
+                println!("  No hooks configured.");
+                println!("\n  Add one with: desk hooks add pre-switch \"your-command\"");
+                return Ok(());
+            }
+
+            if !state.pre_switch_hooks.is_empty() {
+                println!("  Pre-switch hooks:");
+                for (i, cmd) in state.pre_switch_hooks.iter().enumerate() {
+                    println!("    [{i}] {cmd}");
+                }
+            }
+
+            if !state.post_switch_hooks.is_empty() {
+                println!("  Post-switch hooks:");
+                for (i, cmd) in state.post_switch_hooks.iter().enumerate() {
+                    println!("    [{i}] {cmd}");
+                }
+            }
+        }
+        HookCommands::Clear => {
+            state.clear_hooks();
+            state.save()?;
+            println!("Cleared all hooks.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk watch` command.
+///
+/// Watches for changes and auto-saves workspace state.
+pub fn handle_watch(interval: u64, name: Option<String>) -> Result<()> {
+    use std::thread;
+    use std::time::Duration;
+
+    let store = FileWorkspaceStore::new()?;
+    let repo_path = std::env::current_dir()?;
+
+    // Determine workspace name
+    let workspace_name = if let Some(n) = name {
+        n
+    } else {
+        let state = DeskState::load()?;
+        match state.get_current(&repo_path) {
+            Some(n) => n.clone(),
+            None => {
+                println!("No active workspace. Specify a name with --name or open a workspace first.");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    // Verify workspace exists
+    if !store.exists(&workspace_name)? {
+        println!("Workspace '{workspace_name}' not found.");
+        std::process::exit(1);
+    }
+
+    println!("Watching workspace '{workspace_name}'...");
+    println!("Auto-saving every {} seconds. Press Ctrl+C to stop.\n", interval);
+
+    loop {
+        thread::sleep(Duration::from_secs(interval));
+
+        // Reload and update workspace
+        if let Some(mut workspace) = store.load(&workspace_name)? {
+            let git = Git2Operations::from_current_dir()?;
+            let status = git.status()?;
+
+            // Capture values before moving
+            let has_changes = status.has_changes();
+            let total_changes = status.total_changes();
+
+            // Update workspace state
+            workspace.branch = status.branch;
+            workspace.commit_sha = status.commit_sha;
+            workspace.metadata.was_dirty = Some(has_changes);
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                workspace.metadata.uncommitted_files = Some(total_changes as u32);
+            }
+            workspace.touch();
+
+            store.save(&workspace, true)?;
+
+            let now = chrono::Local::now();
+            println!("[{}] Saved workspace state (branch: {}, {} changes)",
+                now.format("%H:%M:%S"),
+                workspace.branch,
+                total_changes
+            );
+        } else {
+            println!("Workspace '{workspace_name}' was deleted. Stopping watch.");
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk note` command.
+///
+/// Manages workspace notes.
+pub fn handle_note(name: &str, command: crate::cli::NoteCommands) -> Result<()> {
+    use crate::cli::NoteCommands;
+    use crate::workspace::types::WorkspaceNote;
+
+    let store = FileWorkspaceStore::new()?;
+
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    match command {
+        NoteCommands::Add { text } => {
+            let note = WorkspaceNote {
+                text: text.clone(),
+                created_at: chrono::Utc::now(),
+            };
+            workspace.metadata.notes.push(note);
+            workspace.touch();
+            store.save(&workspace, true)?;
+            println!("Added note to '{name}'.");
+        }
+        NoteCommands::List => {
+            if workspace.metadata.notes.is_empty() {
+                println!("No notes on workspace '{name}'.");
+            } else {
+                println!("Notes on '{name}':\n");
+                for (i, note) in workspace.metadata.notes.iter().enumerate() {
+                    let time = note.created_at.format("%Y-%m-%d %H:%M");
+                    println!("  [{}] {} ({})", i, note.text, time);
+                }
+            }
+        }
+        NoteCommands::Clear => {
+            let count = workspace.metadata.notes.len();
+            workspace.metadata.notes.clear();
+            workspace.touch();
+            store.save(&workspace, true)?;
+            println!("Cleared {count} note(s) from '{name}'.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk bulk` command.
+///
+/// Bulk operations on multiple workspaces.
+pub fn handle_bulk(command: crate::cli::BulkCommands) -> Result<()> {
+    use crate::cli::BulkCommands;
+
+    let store = FileWorkspaceStore::new()?;
+
+    match command {
+        BulkCommands::Delete { names, yes } => {
+            if !yes {
+                print!("Delete {} workspace(s)? [y/N] ", names.len());
+                io::stdout().flush()?;
+
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+
+                if !input.trim().eq_ignore_ascii_case("y") {
+                    println!("Cancelled.");
+                    return Ok(());
+                }
+            }
+
+            let mut deleted = 0;
+            for name in &names {
+                if store.delete(name)? {
+                    println!("Deleted '{name}'.");
+                    deleted += 1;
+                } else {
+                    println!("Workspace '{name}' not found.");
+                }
+            }
+            println!("\nDeleted {deleted} workspace(s).");
+        }
+        BulkCommands::Tag { names, tags } => {
+            let mut tagged = 0;
+            for name in &names {
+                if let Some(mut ws) = store.load(name)? {
+                    for tag in &tags {
+                        if !ws.metadata.tags.contains(tag) {
+                            ws.metadata.tags.push(tag.clone());
+                        }
+                    }
+                    ws.metadata.tags.sort();
+                    ws.touch();
+                    store.save(&ws, true)?;
+                    tagged += 1;
+                } else {
+                    println!("Workspace '{name}' not found.");
+                }
+            }
+            println!("Added {} tag(s) to {tagged} workspace(s).", tags.len());
+        }
+        BulkCommands::Archive { names } => {
+            let mut archived = 0;
+            for name in &names {
+                if let Some(mut ws) = store.load(name)? {
+                    if !ws.metadata.archived {
+                        ws.metadata.archived = true;
+                        ws.touch();
+                        store.save(&ws, true)?;
+                        println!("Archived '{name}'.");
+                        archived += 1;
+                    } else {
+                        println!("'{name}' already archived.");
+                    }
+                } else {
+                    println!("Workspace '{name}' not found.");
+                }
+            }
+            println!("\nArchived {archived} workspace(s).");
+        }
+        BulkCommands::Export { names, output } => {
+            let output_dir = std::path::Path::new(&output);
+            if !output_dir.exists() {
+                std::fs::create_dir_all(output_dir)?;
+            }
+
+            let mut exported = 0;
+            for name in &names {
+                if let Some(ws) = store.load(name)? {
+                    let file_path = output_dir.join(format!("{}.json", name));
+                    let json = serde_json::to_string_pretty(&ws)?;
+                    std::fs::write(&file_path, json)?;
+                    println!("Exported '{name}' to {}", file_path.display());
+                    exported += 1;
+                } else {
+                    println!("Workspace '{name}' not found.");
+                }
+            }
+            println!("\nExported {exported} workspace(s).");
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles interactive workspace selection.
+///
+/// Shows a numbered list and lets user select by number.
+pub fn handle_interactive_open() -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+    let workspaces = store.list()?;
+
+    // Filter out archived workspaces
+    let active: Vec<_> = workspaces.iter()
+        .filter(|w| !w.metadata.archived)
+        .collect();
+
+    if active.is_empty() {
+        println!("No workspaces available.");
+        println!("\nCreate one with: desk open <name>");
+        return Ok(());
+    }
+
+    println!("Select a workspace:\n");
+
+    for (i, ws) in active.iter().enumerate() {
+        let tags = if ws.metadata.tags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", ws.metadata.tags.join(", "))
+        };
+        println!("  {:>2}) {}{}", i + 1, ws.name, tags);
+        println!("      Branch: {}", ws.branch);
+    }
+
+    print!("\nEnter number (1-{}): ", active.len());
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let selection: usize = match input.trim().parse() {
+        Ok(n) if n >= 1 && n <= active.len() => n,
+        _ => {
+            println!("Invalid selection.");
+            std::process::exit(1);
+        }
+    };
+
+    let selected = active[selection - 1];
+    let mut git = Git2Operations::from_current_dir()?;
+
+    restore_workspace(&mut git, selected)?;
+
+    // Track current workspace
+    let repo_path = std::env::current_dir()?;
+    let mut state = DeskState::load()?;
+    state.set_current(&repo_path, &selected.name);
+    state.record_workspace_opened(&repo_path);
+    state.save()?;
+
+    // Update workspace stats
+    let mut ws = selected.clone();
+    ws.metadata.open_count += 1;
+    ws.metadata.last_opened_at = Some(chrono::Utc::now());
+    store.save(&ws, true)?;
+
+    println!("\nSwitched to workspace '{}'.", selected.name);
 
     Ok(())
 }

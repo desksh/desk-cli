@@ -38,7 +38,8 @@ pub enum Commands {
     /// If it doesn't exist, saves the current git state as a new workspace.
     Open {
         /// Name of the workspace to open or create.
-        name: String,
+        /// If omitted with --interactive, shows a selection menu.
+        name: Option<String>,
 
         /// Optional description for a new workspace.
         #[arg(short, long)]
@@ -47,10 +48,26 @@ pub enum Commands {
         /// Force overwrite if workspace already exists.
         #[arg(short, long)]
         force: bool,
+
+        /// Interactive mode: select workspace from a list.
+        #[arg(short, long)]
+        interactive: bool,
     },
 
     /// List all saved workspaces.
-    List,
+    List {
+        /// Filter by tag.
+        #[arg(short, long)]
+        tag: Option<String>,
+
+        /// Only show archived workspaces.
+        #[arg(long)]
+        archived: bool,
+
+        /// Show all workspaces including archived.
+        #[arg(long)]
+        all: bool,
+    },
 
     /// Show current workspace and git status.
     Status,
@@ -251,6 +268,79 @@ pub enum Commands {
         #[command(subcommand)]
         command: TagCommands,
     },
+
+    /// Archive a workspace.
+    ///
+    /// Hides the workspace from the default list without deleting it.
+    Archive {
+        /// Name of the workspace to archive.
+        name: String,
+    },
+
+    /// Unarchive a workspace.
+    ///
+    /// Restores an archived workspace to the active list.
+    Unarchive {
+        /// Name of the workspace to unarchive.
+        name: String,
+    },
+
+    /// Create an alias for a workspace.
+    ///
+    /// Aliases allow quick access with shorter names.
+    Alias {
+        #[command(subcommand)]
+        command: AliasCommands,
+    },
+
+    /// Compare two workspaces.
+    ///
+    /// Shows differences in git state between two workspaces.
+    Diff {
+        /// First workspace name.
+        workspace1: String,
+
+        /// Second workspace name.
+        workspace2: String,
+    },
+
+    /// Show workspace usage statistics.
+    ///
+    /// Displays metrics like most-used workspaces, switch frequency, etc.
+    Stats,
+
+    /// Manage workspace hooks.
+    ///
+    /// Hooks run commands before or after workspace switches.
+    Hooks {
+        #[command(subcommand)]
+        command: HookCommands,
+    },
+
+    /// Watch mode: auto-save workspace state periodically.
+    Watch {
+        /// Interval in seconds between saves.
+        #[arg(short, long, default_value = "300")]
+        interval: u64,
+
+        /// Workspace name to watch.
+        name: Option<String>,
+    },
+
+    /// Manage workspace notes.
+    Note {
+        /// Workspace name.
+        name: String,
+
+        #[command(subcommand)]
+        command: NoteCommands,
+    },
+
+    /// Bulk operations on multiple workspaces.
+    Bulk {
+        #[command(subcommand)]
+        command: BulkCommands,
+    },
 }
 
 /// Tag subcommands.
@@ -275,6 +365,125 @@ pub enum TagCommands {
 
     /// Clear all tags from a workspace.
     Clear,
+}
+
+/// Alias subcommands.
+#[derive(Subcommand, Debug)]
+pub enum AliasCommands {
+    /// Create an alias for a workspace.
+    Set {
+        /// Short alias name.
+        alias: String,
+
+        /// Full workspace name.
+        workspace: String,
+    },
+
+    /// Remove an alias.
+    Remove {
+        /// Alias to remove.
+        alias: String,
+    },
+
+    /// List all aliases.
+    List,
+}
+
+/// Hook subcommands.
+#[derive(Subcommand, Debug)]
+pub enum HookCommands {
+    /// Add a hook.
+    Add {
+        /// Hook type (pre-switch or post-switch).
+        #[arg(value_enum)]
+        hook_type: HookType,
+
+        /// Command to run.
+        command: String,
+    },
+
+    /// Remove a hook.
+    Remove {
+        /// Hook type.
+        #[arg(value_enum)]
+        hook_type: HookType,
+
+        /// Index of the hook to remove (0-based).
+        index: usize,
+    },
+
+    /// List all hooks.
+    List,
+
+    /// Clear all hooks.
+    Clear,
+}
+
+/// Hook types.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum HookType {
+    PreSwitch,
+    PostSwitch,
+}
+
+/// Note subcommands.
+#[derive(Subcommand, Debug)]
+pub enum NoteCommands {
+    /// Add a note to a workspace.
+    Add {
+        /// Note text.
+        text: String,
+    },
+
+    /// List notes on a workspace.
+    List,
+
+    /// Clear all notes from a workspace.
+    Clear,
+}
+
+/// Bulk operation subcommands.
+#[derive(Subcommand, Debug)]
+pub enum BulkCommands {
+    /// Delete multiple workspaces.
+    Delete {
+        /// Workspace names to delete.
+        #[arg(required = true)]
+        names: Vec<String>,
+
+        /// Skip confirmation prompt.
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+
+    /// Add tags to multiple workspaces.
+    Tag {
+        /// Workspace names.
+        #[arg(required = true, num_args = 1..)]
+        names: Vec<String>,
+
+        /// Tags to add.
+        #[arg(short, long, required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+
+    /// Archive multiple workspaces.
+    Archive {
+        /// Workspace names to archive.
+        #[arg(required = true)]
+        names: Vec<String>,
+    },
+
+    /// Export multiple workspaces.
+    Export {
+        /// Workspace names to export.
+        #[arg(required = true)]
+        names: Vec<String>,
+
+        /// Output directory.
+        #[arg(short, long, default_value = ".")]
+        output: String,
+    },
 }
 
 /// Supported shell types for init command.

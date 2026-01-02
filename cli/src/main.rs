@@ -52,8 +52,9 @@ async fn run(cli: Cli) -> Result<()> {
             name,
             description,
             force,
-        } => cli::commands::handle_open(&name, description, force),
-        Commands::List => cli::commands::handle_list(),
+            interactive,
+        } => cli::commands::handle_open(name, description, force, interactive),
+        Commands::List { tag, archived, all } => cli::commands::handle_list(tag, archived, all),
         Commands::Status => cli::commands::handle_workspace_status(),
         Commands::Close { switch_to } => cli::commands::handle_close(switch_to),
         Commands::Sync { command } => match command {
@@ -95,5 +96,17 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::History { limit, repo_only } => cli::commands::handle_history(limit, repo_only),
         Commands::Config { key, value, list } => cli::commands::handle_config(key, value, list),
         Commands::Tag { name, command } => cli::commands::handle_tag(&name, command),
+        Commands::Archive { name } => cli::commands::handle_archive(&name),
+        Commands::Unarchive { name } => cli::commands::handle_unarchive(&name),
+        Commands::Alias { command } => cli::commands::handle_alias(command),
+        Commands::Diff {
+            workspace1,
+            workspace2,
+        } => cli::commands::handle_diff(&workspace1, &workspace2),
+        Commands::Stats => cli::commands::handle_stats(),
+        Commands::Hooks { command } => cli::commands::handle_hooks(command),
+        Commands::Watch { interval, name } => cli::commands::handle_watch(interval, name),
+        Commands::Note { name, command } => cli::commands::handle_note(&name, command),
+        Commands::Bulk { command } => cli::commands::handle_bulk(command),
     }
 }

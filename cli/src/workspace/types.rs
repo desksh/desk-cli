@@ -62,6 +62,35 @@ pub struct WorkspaceMetadata {
     /// Tags for organizing workspaces.
     #[serde(default)]
     pub tags: Vec<String>,
+
+    /// Whether the workspace is archived (hidden from default list).
+    #[serde(default)]
+    pub archived: bool,
+
+    /// Notes attached to the workspace.
+    #[serde(default)]
+    pub notes: Vec<WorkspaceNote>,
+
+    /// Number of times this workspace has been opened.
+    #[serde(default)]
+    pub open_count: u32,
+
+    /// Total time spent in this workspace (in seconds).
+    #[serde(default)]
+    pub total_time_secs: u64,
+
+    /// When the workspace was last opened.
+    pub last_opened_at: Option<DateTime<Utc>>,
+}
+
+/// A note attached to a workspace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceNote {
+    /// The note text.
+    pub text: String,
+
+    /// When the note was created.
+    pub created_at: DateTime<Utc>,
 }
 
 #[allow(dead_code)]

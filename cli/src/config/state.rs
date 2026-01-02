@@ -36,6 +36,22 @@ pub struct DeskState {
     /// History of workspace switches (most recent first).
     #[serde(default)]
     pub history: Vec<HistoryEntry>,
+
+    /// Workspace aliases (short name -> full workspace name).
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
+
+    /// Pre-switch hooks (commands to run before switching workspaces).
+    #[serde(default)]
+    pub pre_switch_hooks: Vec<String>,
+
+    /// Post-switch hooks (commands to run after switching workspaces).
+    #[serde(default)]
+    pub post_switch_hooks: Vec<String>,
+
+    /// When the current workspace was opened (for time tracking).
+    #[serde(default)]
+    pub current_opened_at: HashMap<String, DateTime<Utc>>,
 }
 
 impl DeskState {
@@ -115,6 +131,77 @@ impl DeskState {
             .filter(|e| e.repo_path == key)
             .take(limit)
             .collect()
+    }
+
+    /// Resolve a name to a workspace name (handling aliases).
+    pub fn resolve_alias(&self, name: &str) -> String {
+        self.aliases.get(name).cloned().unwrap_or_else(|| name.to_string())
+    }
+
+    /// Set an alias for a workspace.
+    pub fn set_alias(&mut self, alias: &str, workspace: &str) {
+        self.aliases.insert(alias.to_string(), workspace.to_string());
+    }
+
+    /// Remove an alias.
+    pub fn remove_alias(&mut self, alias: &str) -> bool {
+        self.aliases.remove(alias).is_some()
+    }
+
+    /// Get all aliases.
+    pub fn get_aliases(&self) -> &HashMap<String, String> {
+        &self.aliases
+    }
+
+    /// Add a pre-switch hook.
+    pub fn add_pre_switch_hook(&mut self, command: String) {
+        self.pre_switch_hooks.push(command);
+    }
+
+    /// Add a post-switch hook.
+    pub fn add_post_switch_hook(&mut self, command: String) {
+        self.post_switch_hooks.push(command);
+    }
+
+    /// Remove a pre-switch hook by index.
+    pub fn remove_pre_switch_hook(&mut self, index: usize) -> bool {
+        if index < self.pre_switch_hooks.len() {
+            self.pre_switch_hooks.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a post-switch hook by index.
+    pub fn remove_post_switch_hook(&mut self, index: usize) -> bool {
+        if index < self.post_switch_hooks.len() {
+            self.post_switch_hooks.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clear all hooks.
+    pub fn clear_hooks(&mut self) {
+        self.pre_switch_hooks.clear();
+        self.post_switch_hooks.clear();
+    }
+
+    /// Record when a workspace was opened (for time tracking).
+    pub fn record_workspace_opened(&mut self, repo_path: &PathBuf) {
+        let key = repo_path.to_string_lossy().to_string();
+        self.current_opened_at.insert(key, Utc::now());
+    }
+
+    /// Get the duration since the current workspace was opened.
+    pub fn get_time_in_workspace(&self, repo_path: &PathBuf) -> Option<u64> {
+        let key = repo_path.to_string_lossy().to_string();
+        self.current_opened_at.get(&key).map(|opened_at| {
+            let duration = Utc::now().signed_duration_since(*opened_at);
+            duration.num_seconds().max(0) as u64
+        })
     }
 }
 
