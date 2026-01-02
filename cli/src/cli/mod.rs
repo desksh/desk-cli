@@ -3,4 +3,4 @@
 pub mod args;
 pub mod commands;
 
-pub use args::{AuthCommands, Cli, Commands};
+pub use args::{AuthCommands, Cli, Commands, SyncCommands};

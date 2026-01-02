@@ -115,6 +115,25 @@ pub enum DeskError {
     /// Git operation error.
     #[error(transparent)]
     Git(#[from] GitError),
+
+    /// Sync version conflict - remote has newer changes.
+    #[allow(dead_code)] // Will be used for advanced conflict handling
+    #[error("Sync conflict: remote version {remote_version} is newer than local version {local_version}. Use --force to overwrite.")]
+    SyncConflict {
+        /// Local workspace version.
+        local_version: i32,
+        /// Remote workspace version.
+        remote_version: i32,
+    },
+
+    /// Workspace has not been synced yet.
+    #[allow(dead_code)] // Will be used for sync operations
+    #[error("Workspace '{0}' has not been synced to the cloud. Use 'desk sync push' first.")]
+    WorkspaceNotSynced(String),
+
+    /// Pro subscription required for this feature.
+    #[error("This feature requires a Pro subscription. Visit https://getdesk.dev/pricing to upgrade.")]
+    SubscriptionRequired,
 }
 
 impl DeskError {

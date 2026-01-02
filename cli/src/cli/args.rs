@@ -63,6 +63,47 @@ pub enum Commands {
         #[arg(short, long)]
         switch_to: Option<String>,
     },
+
+    /// Sync workspaces with the cloud (Pro feature).
+    ///
+    /// Push and pull workspaces to sync across devices.
+    Sync {
+        #[command(subcommand)]
+        command: SyncCommands,
+    },
+}
+
+/// Sync subcommands.
+#[derive(Subcommand, Debug)]
+pub enum SyncCommands {
+    /// Push local workspaces to the cloud.
+    ///
+    /// Uploads workspace state to sync across devices.
+    Push {
+        /// Workspace name to push (or all if omitted).
+        name: Option<String>,
+
+        /// Force push even if remote has newer changes.
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Pull workspaces from the cloud.
+    ///
+    /// Downloads workspace state from the cloud.
+    Pull {
+        /// Workspace name to pull (or all if omitted).
+        name: Option<String>,
+
+        /// Force pull even if local has newer changes.
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Show sync status.
+    ///
+    /// Displays which workspaces are synced, out of sync, or local-only.
+    Status,
 }
 
 /// Authentication subcommands.

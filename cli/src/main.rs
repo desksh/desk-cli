@@ -15,7 +15,7 @@ mod workspace;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use crate::cli::{AuthCommands, Cli, Commands};
+use crate::cli::{AuthCommands, Cli, Commands, SyncCommands};
 use crate::error::Result;
 
 #[tokio::main]
@@ -56,5 +56,14 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::List => cli::commands::handle_list(),
         Commands::Status => cli::commands::handle_workspace_status(),
         Commands::Close { switch_to } => cli::commands::handle_close(switch_to),
+        Commands::Sync { command } => match command {
+            SyncCommands::Push { name, force } => {
+                cli::commands::handle_sync_push(name, force).await
+            }
+            SyncCommands::Pull { name, force } => {
+                cli::commands::handle_sync_pull(name, force).await
+            }
+            SyncCommands::Status => cli::commands::handle_sync_status().await,
+        },
     }
 }

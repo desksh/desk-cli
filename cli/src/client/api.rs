@@ -27,6 +27,52 @@ struct TokenExchangeResponse {
     user_id: String,
 }
 
+/// Workspace state sent to/from the API.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceState {
+    /// Git branch name.
+    pub branch: String,
+    /// Git commit SHA.
+    pub commit_sha: String,
+    /// Stash name if any.
+    pub stash_name: Option<String>,
+    /// Repository path (local to this machine).
+    pub repo_path: String,
+    /// Additional metadata.
+    #[serde(default)]
+    pub metadata: WorkspaceStateMetadata,
+}
+
+/// Metadata within workspace state.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceStateMetadata {
+    /// Number of uncommitted files.
+    pub uncommitted_files: Option<u32>,
+    /// Whether the working directory was dirty.
+    pub was_dirty: Option<bool>,
+}
+
+/// Remote workspace from the API.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RemoteWorkspace {
+    /// Remote workspace ID.
+    pub id: String,
+    /// Workspace name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Serialized workspace state.
+    pub state: WorkspaceState,
+    /// Version number for conflict detection.
+    pub version: i32,
+    /// Last sync timestamp.
+    pub last_synced_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Creation timestamp.
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp.
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Main API client for communicating with the Desk backend.
 ///
 /// Wraps an HTTP client with authentication and token refresh middleware.
@@ -202,5 +248,227 @@ impl DeskApiClient {
     #[must_use]
     pub const fn client(&self) -> &ClientWithMiddleware {
         &self.client
+    }
+
+    // ========== Workspace API Methods ==========
+
+    /// Lists all workspaces for the authenticated user.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The user is not authenticated ([`DeskError::Unauthorized`])
+    /// - Pro subscription is required ([`DeskError::SubscriptionRequired`])
+    /// - The API is unreachable ([`DeskError::ApiUnavailable`])
+    pub async fn list_workspaces(&self) -> Result<Vec<RemoteWorkspace>> {
+        let url = self
+            .base_url
+            .join("/v1/workspaces")
+            .map_err(|e| DeskError::Config(format!("Invalid workspaces URL: {e}")))?;
+
+        let response = self.client.get(url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(self.handle_error_response(status.as_u16(), response).await);
+        }
+
+        response
+            .json()
+            .await
+            .map_err(|e| DeskError::Serialization(format!("Invalid workspaces response: {e}")))
+    }
+
+    /// Gets a workspace by ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the workspace is not found or access is denied.
+    #[allow(dead_code)] // Will be used for single workspace operations
+    pub async fn get_workspace(&self, id: &str) -> Result<RemoteWorkspace> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/workspaces/{id}"))
+            .map_err(|e| DeskError::Config(format!("Invalid workspace URL: {e}")))?;
+
+        let response = self.client.get(url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(self.handle_error_response(status.as_u16(), response).await);
+        }
+
+        response
+            .json()
+            .await
+            .map_err(|e| DeskError::Serialization(format!("Invalid workspace response: {e}")))
+    }
+
+    /// Creates or updates a workspace by name (upsert).
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Workspace name
+    /// * `description` - Optional description
+    /// * `state` - Workspace state to save
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn create_workspace(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        state: &WorkspaceState,
+    ) -> Result<RemoteWorkspace> {
+        let url = self
+            .base_url
+            .join("/v1/workspaces")
+            .map_err(|e| DeskError::Config(format!("Invalid workspaces URL: {e}")))?;
+
+        let body = serde_json::json!({
+            "name": name,
+            "description": description,
+            "state": state,
+        });
+
+        let response = self
+            .client
+            .post(url)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_string(&body)?)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(self.handle_error_response(status.as_u16(), response).await);
+        }
+
+        response
+            .json()
+            .await
+            .map_err(|e| DeskError::Serialization(format!("Invalid workspace response: {e}")))
+    }
+
+    /// Updates a workspace with version checking.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Remote workspace ID
+    /// * `name` - Optional new name
+    /// * `description` - Optional new description
+    /// * `state` - Optional new state
+    /// * `version` - Expected version for optimistic locking
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DeskError::SyncConflict`] if the remote version doesn't match.
+    pub async fn update_workspace(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        state: Option<&WorkspaceState>,
+        version: i32,
+    ) -> Result<RemoteWorkspace> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/workspaces/{id}"))
+            .map_err(|e| DeskError::Config(format!("Invalid workspace URL: {e}")))?;
+
+        let body = serde_json::json!({
+            "name": name,
+            "description": description,
+            "state": state,
+            "version": version,
+        });
+
+        let response = self
+            .client
+            .put(url)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_string(&body)?)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(self.handle_error_response(status.as_u16(), response).await);
+        }
+
+        response
+            .json()
+            .await
+            .map_err(|e| DeskError::Serialization(format!("Invalid workspace response: {e}")))
+    }
+
+    /// Deletes a workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the workspace is not found or access is denied.
+    #[allow(dead_code)] // Will be used for desk sync delete command
+    pub async fn delete_workspace(&self, id: &str) -> Result<()> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/workspaces/{id}"))
+            .map_err(|e| DeskError::Config(format!("Invalid workspace URL: {e}")))?;
+
+        let response = self.client.delete(url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(self.handle_error_response(status.as_u16(), response).await);
+        }
+
+        Ok(())
+    }
+
+    /// Handles error responses from the API.
+    async fn handle_error_response(
+        &self,
+        status_code: u16,
+        response: reqwest::Response,
+    ) -> DeskError {
+        // Try to parse error response body
+        #[derive(serde::Deserialize)]
+        struct ErrorBody {
+            error: Option<String>,
+            message: Option<String>,
+        }
+
+        let error_body: Option<ErrorBody> = response.json().await.ok();
+        let error_code = error_body.as_ref().and_then(|e| e.error.clone());
+        let message = error_body
+            .and_then(|e| e.message)
+            .unwrap_or_else(|| format!("HTTP {status_code}"));
+
+        match status_code {
+            401 => DeskError::Unauthorized,
+            403 => {
+                // Check if it's a subscription error
+                if error_code.as_deref() == Some("insufficient_tier") {
+                    DeskError::SubscriptionRequired
+                } else {
+                    DeskError::ApiError {
+                        status: status_code,
+                        message,
+                    }
+                }
+            }
+            409 => {
+                // Version conflict
+                DeskError::ApiError {
+                    status: status_code,
+                    message,
+                }
+            }
+            503 => DeskError::ApiUnavailable,
+            _ => DeskError::ApiError {
+                status: status_code,
+                message,
+            },
+        }
     }
 }

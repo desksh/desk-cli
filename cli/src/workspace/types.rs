@@ -49,6 +49,15 @@ pub struct WorkspaceMetadata {
 
     /// Whether the working directory was dirty.
     pub was_dirty: Option<bool>,
+
+    /// Remote workspace ID (set after first sync).
+    pub remote_id: Option<String>,
+
+    /// Remote version number for conflict detection.
+    pub remote_version: Option<i32>,
+
+    /// When the workspace was last synced with the server.
+    pub last_synced_at: Option<DateTime<Utc>>,
 }
 
 #[allow(dead_code)]
