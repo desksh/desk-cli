@@ -83,5 +83,7 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Export { name, output } => cli::commands::handle_export(&name, output),
         Commands::Import { file, name, force } => cli::commands::handle_import(&file, name, force),
         Commands::Clean { execute } => cli::commands::handle_clean(execute),
+        Commands::Prompt => cli::commands::handle_prompt(),
+        Commands::Init { shell } => cli::commands::handle_init(shell),
     }
 }

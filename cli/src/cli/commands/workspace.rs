@@ -11,8 +11,9 @@
 
 use std::io::{self, Write};
 
+use crate::cli::args::ShellType;
 use crate::client::DeskApiClient;
-use crate::config::load_config;
+use crate::config::{load_config, DeskState};
 use crate::error::{DeskError, Result};
 use crate::git::{Git2Operations, GitOperations, StashOptions, SwitchOptions};
 use crate::workspace::{FileWorkspaceStore, Workspace, WorkspaceStore};
@@ -37,6 +38,7 @@ use crate::workspace::{FileWorkspaceStore, Workspace, WorkspaceStore};
 pub fn handle_open(name: &str, description: Option<String>, force: bool) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
     let mut git = Git2Operations::from_current_dir()?;
+    let repo_path = std::env::current_dir()?;
 
     // Check if workspace already exists
     if let Some(existing) = store.load(name)? {
@@ -58,6 +60,11 @@ pub fn handle_open(name: &str, description: Option<String>, force: bool) -> Resu
         save_current_state(&store, &mut git, name, description, false)?;
         println!("Created workspace '{name}'.");
     }
+
+    // Track current workspace in state
+    let mut state = DeskState::load()?;
+    state.set_current(&repo_path, name);
+    state.save()?;
 
     Ok(())
 }
@@ -150,18 +157,27 @@ pub fn handle_workspace_status() -> Result<()> {
 /// - `switch_to` is specified but the workspace doesn't exist
 /// - Git operations fail during the switch
 pub fn handle_close(switch_to: Option<String>) -> Result<()> {
+    let repo_path = std::env::current_dir()?;
+    let mut state = DeskState::load()?;
+
     if let Some(target) = switch_to {
         let store = FileWorkspaceStore::new()?;
         let mut git = Git2Operations::from_current_dir()?;
 
         if let Some(workspace) = store.load(&target)? {
             restore_workspace(&mut git, &workspace)?;
+            // Update state to new workspace
+            state.set_current(&repo_path, &target);
+            state.save()?;
             println!("Switched to workspace '{target}'.");
         } else {
             println!("Workspace '{target}' not found.");
             std::process::exit(1);
         }
     } else {
+        // Clear current workspace
+        state.clear_current(&repo_path);
+        state.save()?;
         println!("Workspace closed.");
         println!("\nUse 'desk open <name>' to switch to another workspace.");
     }
@@ -695,6 +711,98 @@ pub fn handle_clean(execute: bool) -> Result<()> {
 
     Ok(())
 }
+
+/// Handles the `desk prompt` command.
+///
+/// Outputs the current workspace name for use in shell prompts.
+/// If no workspace is active, outputs nothing.
+///
+/// # Errors
+///
+/// Returns an error if state cannot be loaded.
+pub fn handle_prompt() -> Result<()> {
+    let repo_path = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(_) => return Ok(()), // Silently fail for prompt
+    };
+
+    let state = DeskState::load().unwrap_or_default();
+
+    if let Some(workspace_name) = state.get_current(&repo_path) {
+        print!("{workspace_name}");
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk init <shell>` command.
+///
+/// Generates shell integration script for the specified shell.
+///
+/// # Arguments
+///
+/// * `shell` - The shell type to generate script for
+pub fn handle_init(shell: ShellType) -> Result<()> {
+    let script = match shell {
+        ShellType::Bash => BASH_INIT_SCRIPT,
+        ShellType::Zsh => ZSH_INIT_SCRIPT,
+        ShellType::Fish => FISH_INIT_SCRIPT,
+    };
+
+    println!("{script}");
+
+    Ok(())
+}
+
+const BASH_INIT_SCRIPT: &str = r#"# Desk shell integration for Bash
+# Add this to your ~/.bashrc
+
+_desk_prompt() {
+    local ws
+    ws=$(desk prompt 2>/dev/null)
+    if [[ -n "$ws" ]]; then
+        echo " [$ws]"
+    fi
+}
+
+# Add to PS1 - example: PS1='\u@\h:\w$(_desk_prompt)\$ '
+# Or use PROMPT_COMMAND for dynamic updates:
+# PROMPT_COMMAND='PS1="\u@\h:\w$(_desk_prompt)\$ "'
+"#;
+
+const ZSH_INIT_SCRIPT: &str = r#"# Desk shell integration for Zsh
+# Add this to your ~/.zshrc
+
+_desk_prompt() {
+    local ws
+    ws=$(desk prompt 2>/dev/null)
+    if [[ -n "$ws" ]]; then
+        echo " [$ws]"
+    fi
+}
+
+# Add to your prompt - example:
+# PROMPT='%n@%m:%~$(_desk_prompt)%# '
+
+# Or use precmd hook for dynamic updates:
+# precmd() { PROMPT="%n@%m:%~$(_desk_prompt)%# " }
+"#;
+
+const FISH_INIT_SCRIPT: &str = r#"# Desk shell integration for Fish
+# Add this to your ~/.config/fish/config.fish
+
+function _desk_prompt
+    set -l ws (desk prompt 2>/dev/null)
+    if test -n "$ws"
+        echo " [$ws]"
+    end
+end
+
+# Add to your fish_prompt function - example:
+# function fish_prompt
+#     echo -n (whoami)'@'(hostname)':'(pwd)(_desk_prompt)'> '
+# end
+"#;
 
 /// Saves the current git state as a workspace.
 ///

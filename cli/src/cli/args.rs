@@ -173,6 +173,30 @@ pub enum Commands {
         #[arg(long)]
         execute: bool,
     },
+
+    /// Output current workspace name for shell prompts.
+    ///
+    /// Returns the name of the currently active workspace, or nothing if
+    /// no workspace is active. Designed for use in shell prompt scripts.
+    Prompt,
+
+    /// Generate shell integration script.
+    ///
+    /// Outputs a script to integrate desk with your shell prompt.
+    /// Source the output in your shell's rc file.
+    Init {
+        /// Shell to generate script for.
+        #[arg(value_enum)]
+        shell: ShellType,
+    },
+}
+
+/// Supported shell types for init command.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ShellType {
+    Bash,
+    Zsh,
+    Fish,
 }
 
 /// Sync subcommands.

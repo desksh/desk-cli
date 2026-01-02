@@ -67,3 +67,8 @@ pub fn ensure_workspaces_dir() -> Result<PathBuf> {
     }
     Ok(dir)
 }
+
+/// Get the state file path (tracks current workspace per repo).
+pub fn state_file() -> Result<PathBuf> {
+    Ok(data_dir()?.join("state.json"))
+}
