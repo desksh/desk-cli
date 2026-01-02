@@ -258,6 +258,94 @@ pub async fn handle_delete(name: &str, cloud: bool, yes: bool) -> Result<()> {
     Ok(())
 }
 
+/// Handles the `desk rename <name> <new_name>` command.
+///
+/// Renames a workspace locally and optionally on the cloud.
+///
+/// # Arguments
+///
+/// * `name` - The current workspace name
+/// * `new_name` - The new name for the workspace
+/// * `cloud` - If true, also rename on the cloud (if synced)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Workspace doesn't exist
+/// - New name already exists
+/// - Cloud rename fails (when `--cloud` is specified)
+pub async fn handle_rename(name: &str, new_name: &str, cloud: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    // Check if source workspace exists
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    // Check if target name already exists
+    if store.exists(new_name)? {
+        println!("Workspace '{new_name}' already exists.");
+        std::process::exit(1);
+    }
+
+    // Check if workspace is synced to cloud
+    let is_synced = workspace.metadata.remote_id.is_some();
+    let remote_id = workspace.metadata.remote_id.clone();
+
+    // Rename on cloud if requested and synced
+    if cloud && is_synced {
+        if let Some(ref id) = remote_id {
+            let config = load_config()?;
+            let client = DeskApiClient::new(&config.api)?;
+
+            // Load credentials
+            if !client.load_credentials().await? {
+                return Err(DeskError::NotAuthenticated);
+            }
+
+            let version = workspace.metadata.remote_version.unwrap_or(0);
+
+            match client
+                .update_workspace(id, Some(new_name), None, None, version)
+                .await
+            {
+                Ok(updated) => {
+                    // Update version from server response
+                    workspace.metadata.remote_version = Some(updated.version);
+                    println!("Renamed on cloud.");
+                }
+                Err(DeskError::SubscriptionRequired) => {
+                    println!("Warning: Could not rename on cloud (Pro subscription required).");
+                }
+                Err(e) => {
+                    println!("Warning: Failed to rename on cloud: {e}");
+                    println!("Local rename will still proceed.");
+                }
+            }
+        }
+    } else if cloud && !is_synced {
+        println!("Note: Workspace is not synced to cloud, skipping cloud rename.");
+    }
+
+    // Update the workspace name
+    workspace.name = new_name.to_string();
+    workspace.touch();
+
+    // Save with new name
+    store.save(&workspace, false)?;
+
+    // Delete old workspace file
+    store.delete(name)?;
+
+    println!("Renamed workspace '{name}' to '{new_name}'.");
+
+    Ok(())
+}
+
 /// Saves the current git state as a workspace.
 ///
 /// Captures the current branch, commit SHA, and optionally stashes uncommitted

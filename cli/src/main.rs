@@ -68,5 +68,10 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Delete { name, cloud, yes } => {
             cli::commands::handle_delete(&name, cloud, yes).await
         }
+        Commands::Rename {
+            name,
+            new_name,
+            cloud,
+        } => cli::commands::handle_rename(&name, &new_name, cloud).await,
     }
 }

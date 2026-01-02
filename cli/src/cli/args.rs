@@ -87,6 +87,21 @@ pub enum Commands {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+
+    /// Rename a workspace.
+    ///
+    /// Changes the workspace name locally and optionally on the cloud.
+    Rename {
+        /// Current name of the workspace.
+        name: String,
+
+        /// New name for the workspace.
+        new_name: String,
+
+        /// Also rename on the cloud (if synced).
+        #[arg(long)]
+        cloud: bool,
+    },
 }
 
 /// Sync subcommands.
