@@ -48,12 +48,9 @@ pub fn handle_open(
     }
 
     // Name is required for non-interactive mode
-    let name = match name {
-        Some(n) => n,
-        None => {
-            println!("Workspace name required. Use --interactive to select from a list.");
-            std::process::exit(1);
-        }
+    let Some(name) = name else {
+        println!("Workspace name required. Use --interactive to select from a list.");
+        std::process::exit(1);
     };
 
     // Resolve alias if applicable
@@ -69,11 +66,11 @@ pub fn handle_open(
         if force {
             // Save current state first, then restore the existing workspace
             save_current_state(&store, &mut git, &resolved_name, description, true)?;
-            println!("Workspace '{}' updated with current state.", resolved_name);
+            println!("Workspace '{resolved_name}' updated with current state.");
         } else {
             // Restore the existing workspace
             restore_workspace(&mut git, &existing)?;
-            println!("Restored workspace '{}'.", resolved_name);
+            println!("Restored workspace '{resolved_name}'.");
             println!("  Branch: {}", existing.branch);
             if existing.stash_name.is_some() {
                 println!("  Stashed changes applied.");
@@ -87,7 +84,7 @@ pub fn handle_open(
     } else {
         // Create new workspace from current state
         save_current_state(&store, &mut git, &resolved_name, description, false)?;
-        println!("Created workspace '{}'.", resolved_name);
+        println!("Created workspace '{resolved_name}'.");
     }
 
     // Track current workspace in state
@@ -136,11 +133,7 @@ pub fn handle_list(tag: Option<String>, archived: bool, all: bool) -> Result<()>
             };
 
             // Tag filter
-            let tag_match = if let Some(ref t) = tag {
-                ws.metadata.tags.contains(t)
-            } else {
-                true
-            };
+            let tag_match = tag.as_ref().map_or(true, |t| ws.metadata.tags.contains(t));
 
             archive_match && tag_match
         })
@@ -165,9 +158,13 @@ pub fn handle_list(tag: Option<String>, archived: bool, all: bool) -> Result<()>
         "Saved workspaces"
     };
 
-    println!("{}:\n", header);
+    println!("{header}:\n");
     for ws in filtered {
-        let archive_marker = if ws.metadata.archived { " [archived]" } else { "" };
+        let archive_marker = if ws.metadata.archived {
+            " [archived]"
+        } else {
+            ""
+        };
         let tags_str = if ws.metadata.tags.is_empty() {
             String::new()
         } else {
@@ -291,12 +288,9 @@ pub async fn handle_delete(name: &str, cloud: bool, yes: bool) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
     // Load the workspace to check if it exists and get remote_id
-    let workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     // Check if workspace is synced to cloud
@@ -339,13 +333,13 @@ pub async fn handle_delete(name: &str, cloud: bool, yes: bool) -> Result<()> {
             match client.delete_workspace(id).await {
                 Ok(()) => {
                     println!("Deleted from cloud.");
-                }
+                },
                 Err(DeskError::SubscriptionRequired) => {
                     println!("Warning: Could not delete from cloud (Pro subscription required).");
-                }
+                },
                 Err(e) => {
                     println!("Warning: Failed to delete from cloud: {e}");
-                }
+                },
             }
         }
     }
@@ -380,12 +374,9 @@ pub async fn handle_rename(name: &str, new_name: &str, cloud: bool) -> Result<()
     let store = FileWorkspaceStore::new()?;
 
     // Check if source workspace exists
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     // Check if target name already exists
@@ -419,14 +410,14 @@ pub async fn handle_rename(name: &str, new_name: &str, cloud: bool) -> Result<()
                     // Update version from server response
                     workspace.metadata.remote_version = Some(updated.version);
                     println!("Renamed on cloud.");
-                }
+                },
                 Err(DeskError::SubscriptionRequired) => {
                     println!("Warning: Could not rename on cloud (Pro subscription required).");
-                }
+                },
                 Err(e) => {
                     println!("Warning: Failed to rename on cloud: {e}");
                     println!("Local rename will still proceed.");
-                }
+                },
             }
         }
     } else if cloud && !is_synced {
@@ -462,12 +453,9 @@ pub async fn handle_rename(name: &str, new_name: &str, cloud: bool) -> Result<()
 pub fn handle_info(name: &str) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
-    let workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     println!("Workspace: {}\n", workspace.name);
@@ -551,12 +539,9 @@ pub fn handle_clone(name: &str, new_name: &str) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
     // Load source workspace
-    let workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     // Check if target already exists
@@ -566,7 +551,7 @@ pub fn handle_clone(name: &str, new_name: &str) -> Result<()> {
     }
 
     // Create clone with new name
-    let mut cloned = workspace.clone();
+    let mut cloned = workspace;
     cloned.name = new_name.to_string();
     cloned.touch();
     // Clear sync metadata - clone is a new local workspace
@@ -598,12 +583,9 @@ pub async fn handle_describe(name: &str, description: &str, cloud: bool) -> Resu
     let store = FileWorkspaceStore::new()?;
 
     // Load workspace
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     let is_synced = workspace.metadata.remote_id.is_some();
@@ -628,13 +610,13 @@ pub async fn handle_describe(name: &str, description: &str, cloud: bool) -> Resu
                 Ok(updated) => {
                     workspace.metadata.remote_version = Some(updated.version);
                     println!("Updated description on cloud.");
-                }
+                },
                 Err(DeskError::SubscriptionRequired) => {
                     println!("Warning: Could not update cloud (Pro subscription required).");
-                }
+                },
                 Err(e) => {
                     println!("Warning: Failed to update cloud: {e}");
-                }
+                },
             }
         }
     } else if cloud && !is_synced {
@@ -666,12 +648,9 @@ pub async fn handle_describe(name: &str, description: &str, cloud: bool) -> Resu
 pub fn handle_export(name: &str, output: Option<String>) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
-    let workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     let output_path = output.unwrap_or_else(|| format!("{name}.json"));
@@ -780,8 +759,8 @@ pub fn handle_clean(execute: bool) -> Result<()> {
         println!("  stash@{{{}}}: {}", stash.index, stash.message);
     }
 
+    println!();
     if execute {
-        println!();
         // Drop stashes in reverse order to preserve indices
         let mut dropped = 0;
         for stash in orphaned.iter().rev() {
@@ -791,7 +770,6 @@ pub fn handle_clean(execute: bool) -> Result<()> {
         }
         println!("Dropped {dropped} stash(es).");
     } else {
-        println!();
         println!("Run with --execute to delete these stashes.");
     }
 
@@ -802,14 +780,9 @@ pub fn handle_clean(execute: bool) -> Result<()> {
 ///
 /// Outputs the current workspace name for use in shell prompts.
 /// If no workspace is active, outputs nothing.
-///
-/// # Errors
-///
-/// Returns an error if state cannot be loaded.
-pub fn handle_prompt() -> Result<()> {
-    let repo_path = match std::env::current_dir() {
-        Ok(p) => p,
-        Err(_) => return Ok(()), // Silently fail for prompt
+pub fn handle_prompt() {
+    let Ok(repo_path) = std::env::current_dir() else {
+        return; // Silently fail for prompt
     };
 
     let state = DeskState::load().unwrap_or_default();
@@ -817,8 +790,6 @@ pub fn handle_prompt() -> Result<()> {
     if let Some(workspace_name) = state.get_current(&repo_path) {
         print!("{workspace_name}");
     }
-
-    Ok(())
 }
 
 /// Handles the `desk init <shell>` command.
@@ -828,7 +799,7 @@ pub fn handle_prompt() -> Result<()> {
 /// # Arguments
 ///
 /// * `shell` - The shell type to generate script for
-pub fn handle_init(shell: ShellType) -> Result<()> {
+pub fn handle_init(shell: ShellType) {
     let script = match shell {
         ShellType::Bash => BASH_INIT_SCRIPT,
         ShellType::Zsh => ZSH_INIT_SCRIPT,
@@ -836,8 +807,6 @@ pub fn handle_init(shell: ShellType) -> Result<()> {
     };
 
     println!("{script}");
-
-    Ok(())
 }
 
 const BASH_INIT_SCRIPT: &str = r#"# Desk shell integration for Bash
@@ -915,7 +884,8 @@ pub fn handle_search(query: &str, name_only: bool, branch_only: bool) -> Result<
             } else {
                 ws.name.to_lowercase().contains(&query_lower)
                     || ws.branch.to_lowercase().contains(&query_lower)
-                    || ws.description
+                    || ws
+                        .description
                         .as_ref()
                         .is_some_and(|d| d.to_lowercase().contains(&query_lower))
             }
@@ -944,7 +914,7 @@ pub fn handle_search(query: &str, name_only: bool, branch_only: bool) -> Result<
 /// Handles the `desk completions <shell>` command.
 ///
 /// Generates shell completion scripts.
-pub fn handle_completions(shell: ShellType) -> Result<()> {
+pub fn handle_completions(shell: ShellType) {
     use clap::CommandFactory;
     use clap_complete::{generate, Shell};
 
@@ -956,13 +926,12 @@ pub fn handle_completions(shell: ShellType) -> Result<()> {
     };
 
     generate(shell, &mut cmd, "desk", &mut std::io::stdout());
-
-    Ok(())
 }
 
 /// Handles the `desk doctor` command.
 ///
 /// Checks desk installation and diagnoses issues.
+#[allow(clippy::too_many_lines)]
 pub fn handle_doctor() -> Result<()> {
     println!("Desk Doctor\n");
     println!("Checking installation...\n");
@@ -978,11 +947,11 @@ pub fn handle_doctor() -> Result<()> {
             } else {
                 println!("OK (will be created: {})", path.display());
             }
-        }
+        },
         Err(e) => {
             println!("ERROR - {e}");
             issues += 1;
-        }
+        },
     }
 
     // Check 2: Data directory
@@ -994,11 +963,11 @@ pub fn handle_doctor() -> Result<()> {
             } else {
                 println!("OK (will be created: {})", path.display());
             }
-        }
+        },
         Err(e) => {
             println!("ERROR - {e}");
             issues += 1;
-        }
+        },
     }
 
     // Check 3: Workspaces directory
@@ -1009,15 +978,15 @@ pub fn handle_doctor() -> Result<()> {
                 // Count workspaces
                 let store = FileWorkspaceStore::new()?;
                 let count = store.list()?.len();
-                println!("OK ({} workspace(s))", count);
+                println!("OK ({count} workspace(s))");
             } else {
                 println!("OK (will be created)");
             }
-        }
+        },
         Err(e) => {
             println!("ERROR - {e}");
             issues += 1;
-        }
+        },
     }
 
     // Check 4: Git access
@@ -1025,18 +994,19 @@ pub fn handle_doctor() -> Result<()> {
     match Git2Operations::from_current_dir() {
         Ok(git) => match git.status() {
             Ok(status) => {
-                println!("OK (branch: {}, {})",
+                println!(
+                    "OK (branch: {}, {})",
                     status.branch,
                     if status.is_dirty { "dirty" } else { "clean" }
                 );
-            }
+            },
             Err(e) => {
                 println!("WARNING - {e}");
-            }
+            },
         },
         Err(_) => {
             println!("N/A (not in a git repository)");
-        }
+        },
     }
 
     // Check 5: Config file
@@ -1044,11 +1014,11 @@ pub fn handle_doctor() -> Result<()> {
     match crate::config::load_config() {
         Ok(config) => {
             println!("OK (API: {})", config.api.base_url);
-        }
+        },
         Err(e) => {
             println!("ERROR - {e}");
             issues += 1;
-        }
+        },
     }
 
     // Check 6: Authentication
@@ -1061,19 +1031,19 @@ pub fn handle_doctor() -> Result<()> {
                 } else {
                     println!("OK (logged in)");
                 }
-            }
+            },
             Ok(None) => {
                 println!("N/A (not logged in)");
-            }
+            },
             Err(e) => {
                 println!("ERROR - {e}");
                 issues += 1;
-            }
+            },
         },
         Err(e) => {
             println!("ERROR - {e}");
             issues += 1;
-        }
+        },
     }
 
     // Summary
@@ -1081,7 +1051,7 @@ pub fn handle_doctor() -> Result<()> {
     if issues == 0 {
         println!("All checks passed!");
     } else {
-        println!("{} issue(s) found.", issues);
+        println!("{issues} issue(s) found.");
     }
 
     Ok(())
@@ -1137,7 +1107,7 @@ fn format_time_ago(timestamp: chrono::DateTime<chrono::Utc>) -> String {
 /// Handles the `desk config` command.
 ///
 /// Views or modifies configuration.
-pub fn handle_config(key: Option<String>, value: Option<String>, list: bool) -> Result<()> {
+pub fn handle_config(key: Option<&str>, value: Option<&str>, list: bool) -> Result<()> {
     let config = crate::config::load_config()?;
 
     if list || (key.is_none() && value.is_none()) {
@@ -1146,20 +1116,26 @@ pub fn handle_config(key: Option<String>, value: Option<String>, list: bool) -> 
         println!("  api.base_url = {}", config.api.base_url);
         println!("  api.timeout_secs = {}", config.api.timeout_secs);
         println!();
-        println!("Config file: {}", crate::config::paths::config_file()?.display());
+        println!(
+            "Config file: {}",
+            crate::config::paths::config_file()?.display()
+        );
         return Ok(());
     }
 
-    if let Some(ref k) = key {
-        if let Some(ref v) = value {
+    if let Some(k) = key {
+        if let Some(v) = value {
             // Set config value
             println!("Setting configuration is not yet implemented.");
-            println!("Edit the config file directly: {}", crate::config::paths::config_file()?.display());
+            println!(
+                "Edit the config file directly: {}",
+                crate::config::paths::config_file()?.display()
+            );
             println!();
             println!("To set {k} = {v}");
         } else {
             // Get config value
-            match k.as_str() {
+            match k {
                 "api.base_url" => println!("{}", config.api.base_url),
                 "api.timeout_secs" => println!("{}", config.api.timeout_secs),
                 _ => {
@@ -1167,7 +1143,7 @@ pub fn handle_config(key: Option<String>, value: Option<String>, list: bool) -> 
                     println!("\nAvailable keys:");
                     println!("  api.base_url");
                     println!("  api.timeout_secs");
-                }
+                },
             }
         }
     }
@@ -1183,12 +1159,9 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
 
     let store = FileWorkspaceStore::new()?;
 
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     match command {
@@ -1202,7 +1175,7 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
             workspace.touch();
             store.save(&workspace, true)?;
             println!("Added {} tag(s) to '{name}'.", tags.len());
-        }
+        },
         TagCommands::Remove { tags } => {
             let before = workspace.metadata.tags.len();
             workspace.metadata.tags.retain(|t| !tags.contains(t));
@@ -1210,7 +1183,7 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
             workspace.touch();
             store.save(&workspace, true)?;
             println!("Removed {removed} tag(s) from '{name}'.");
-        }
+        },
         TagCommands::List => {
             if workspace.metadata.tags.is_empty() {
                 println!("No tags on workspace '{name}'.");
@@ -1220,14 +1193,14 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
                     println!("  {tag}");
                 }
             }
-        }
+        },
         TagCommands::Clear => {
             let count = workspace.metadata.tags.len();
             workspace.metadata.tags.clear();
             workspace.touch();
             store.save(&workspace, true)?;
             println!("Cleared {count} tag(s) from '{name}'.");
-        }
+        },
     }
 
     Ok(())
@@ -1239,12 +1212,9 @@ pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
 pub fn handle_archive(name: &str) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     if workspace.metadata.archived {
@@ -1268,12 +1238,9 @@ pub fn handle_archive(name: &str) -> Result<()> {
 pub fn handle_unarchive(name: &str) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     if !workspace.metadata.archived {
@@ -1310,7 +1277,7 @@ pub fn handle_alias(command: crate::cli::AliasCommands) -> Result<()> {
             state.set_alias(&alias, &workspace);
             state.save()?;
             println!("Created alias '{alias}' -> '{workspace}'.");
-        }
+        },
         AliasCommands::Remove { alias } => {
             if state.remove_alias(&alias) {
                 state.save()?;
@@ -1318,7 +1285,7 @@ pub fn handle_alias(command: crate::cli::AliasCommands) -> Result<()> {
             } else {
                 println!("Alias '{alias}' not found.");
             }
-        }
+        },
         AliasCommands::List => {
             let aliases = state.get_aliases();
             if aliases.is_empty() {
@@ -1330,7 +1297,7 @@ pub fn handle_alias(command: crate::cli::AliasCommands) -> Result<()> {
                     println!("  {alias} -> {workspace}");
                 }
             }
-        }
+        },
     }
 
     Ok(())
@@ -1339,27 +1306,22 @@ pub fn handle_alias(command: crate::cli::AliasCommands) -> Result<()> {
 /// Handles the `desk diff <ws1> <ws2>` command.
 ///
 /// Compares two workspaces.
+#[allow(clippy::too_many_lines)]
 pub fn handle_diff(workspace1: &str, workspace2: &str) -> Result<()> {
     let store = FileWorkspaceStore::new()?;
 
-    let ws1 = match store.load(workspace1)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{workspace1}' not found.");
-            std::process::exit(1);
-        }
+    let Some(ws1) = store.load(workspace1)? else {
+        println!("Workspace '{workspace1}' not found.");
+        std::process::exit(1);
     };
 
-    let ws2 = match store.load(workspace2)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{workspace2}' not found.");
-            std::process::exit(1);
-        }
+    let Some(ws2) = store.load(workspace2)? else {
+        println!("Workspace '{workspace2}' not found.");
+        std::process::exit(1);
     };
 
     println!("Comparing workspaces:\n");
-    println!("  {} vs {}\n", workspace1, workspace2);
+    println!("  {workspace1} vs {workspace2}\n");
 
     // Branch comparison
     if ws1.branch == ws2.branch {
@@ -1372,33 +1334,41 @@ pub fn handle_diff(workspace1: &str, workspace2: &str) -> Result<()> {
     if ws1.commit_sha == ws2.commit_sha {
         println!("  Commit:      {} (same)", &ws1.commit_sha[..7]);
     } else {
-        println!("  Commit:      {} vs {}", &ws1.commit_sha[..7], &ws2.commit_sha[..7]);
+        println!(
+            "  Commit:      {} vs {}",
+            &ws1.commit_sha[..7],
+            &ws2.commit_sha[..7]
+        );
     }
 
     // Repository path
     if ws1.repo_path == ws2.repo_path {
         println!("  Repository:  {} (same)", ws1.repo_path.display());
     } else {
-        println!("  Repository:  {} vs {}", ws1.repo_path.display(), ws2.repo_path.display());
+        println!(
+            "  Repository:  {} vs {}",
+            ws1.repo_path.display(),
+            ws2.repo_path.display()
+        );
     }
 
     // Stash
     match (&ws1.stash_name, &ws2.stash_name) {
         (Some(s1), Some(s2)) if s1 == s2 => {
-            println!("  Stash:       {} (same)", s1);
-        }
+            println!("  Stash:       {s1} (same)");
+        },
         (Some(s1), Some(s2)) => {
-            println!("  Stash:       {} vs {}", s1, s2);
-        }
+            println!("  Stash:       {s1} vs {s2}");
+        },
         (Some(s1), None) => {
-            println!("  Stash:       {} vs (none)", s1);
-        }
+            println!("  Stash:       {s1} vs (none)");
+        },
         (None, Some(s2)) => {
-            println!("  Stash:       (none) vs {}", s2);
-        }
+            println!("  Stash:       (none) vs {s2}");
+        },
         (None, None) => {
             println!("  Stash:       (none)");
-        }
+        },
     }
 
     // Tags
@@ -1411,22 +1381,47 @@ pub fn handle_diff(workspace1: &str, workspace2: &str) -> Result<()> {
     let common: Vec<_> = tags1.intersection(&tags2).collect();
 
     if !common.is_empty() {
-        println!("  Common tags: {}", common.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "  Common tags: {}",
+            common
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     if !only_in_1.is_empty() {
-        println!("  Only in {}: {}", workspace1, only_in_1.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "  Only in {}: {}",
+            workspace1,
+            only_in_1
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     if !only_in_2.is_empty() {
-        println!("  Only in {}: {}", workspace2, only_in_2.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "  Only in {}: {}",
+            workspace2,
+            only_in_2
+                .iter()
+                .map(|t| t.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     // Timestamps
     println!();
-    println!("  Created:     {} vs {}",
+    println!(
+        "  Created:     {} vs {}",
         ws1.created_at.format("%Y-%m-%d %H:%M"),
         ws2.created_at.format("%Y-%m-%d %H:%M")
     );
-    println!("  Updated:     {} vs {}",
+    println!(
+        "  Updated:     {} vs {}",
         ws1.updated_at.format("%Y-%m-%d %H:%M"),
         ws2.updated_at.format("%Y-%m-%d %H:%M")
     );
@@ -1452,15 +1447,19 @@ pub fn handle_stats() -> Result<()> {
     // Total counts
     let total = workspaces.len();
     let archived = workspaces.iter().filter(|w| w.metadata.archived).count();
-    let synced = workspaces.iter().filter(|w| w.metadata.remote_id.is_some()).count();
+    let synced = workspaces
+        .iter()
+        .filter(|w| w.metadata.remote_id.is_some())
+        .count();
 
-    println!("  Total workspaces:    {}", total);
+    println!("  Total workspaces:    {total}");
     println!("  Active:              {}", total - archived);
-    println!("  Archived:            {}", archived);
-    println!("  Synced to cloud:     {}", synced);
+    println!("  Archived:            {archived}");
+    println!("  Synced to cloud:     {synced}");
 
     // Most used workspaces (by open count)
-    let mut by_usage: Vec<_> = workspaces.iter()
+    let mut by_usage: Vec<_> = workspaces
+        .iter()
         .filter(|w| w.metadata.open_count > 0)
         .collect();
     by_usage.sort_by(|a, b| b.metadata.open_count.cmp(&a.metadata.open_count));
@@ -1473,7 +1472,8 @@ pub fn handle_stats() -> Result<()> {
     }
 
     // Most time spent
-    let mut by_time: Vec<_> = workspaces.iter()
+    let mut by_time: Vec<_> = workspaces
+        .iter()
         .filter(|w| w.metadata.total_time_secs > 0)
         .collect();
     by_time.sort_by(|a, b| b.metadata.total_time_secs.cmp(&a.metadata.total_time_secs));
@@ -1488,12 +1488,11 @@ pub fn handle_stats() -> Result<()> {
     }
 
     // Recently used
-    let mut by_recent: Vec<_> = workspaces.iter()
+    let mut by_recent: Vec<_> = workspaces
+        .iter()
         .filter(|w| w.metadata.last_opened_at.is_some())
         .collect();
-    by_recent.sort_by(|a, b| {
-        b.metadata.last_opened_at.cmp(&a.metadata.last_opened_at)
-    });
+    by_recent.sort_by(|a, b| b.metadata.last_opened_at.cmp(&a.metadata.last_opened_at));
 
     if !by_recent.is_empty() {
         println!("\n  Recently used:");
@@ -1518,7 +1517,7 @@ pub fn handle_stats() -> Result<()> {
         let mut sorted_tags: Vec<_> = tag_counts.iter().collect();
         sorted_tags.sort_by(|a, b| b.1.cmp(a.1));
         for (tag, count) in sorted_tags.iter().take(10) {
-            println!("    {} ({})", tag, count);
+            println!("    {tag} ({count})");
         }
     }
 
@@ -1543,14 +1542,14 @@ pub fn handle_hooks(command: crate::cli::HookCommands) -> Result<()> {
                 HookType::PreSwitch => {
                     state.add_pre_switch_hook(command.clone());
                     println!("Added pre-switch hook: {command}");
-                }
+                },
                 HookType::PostSwitch => {
                     state.add_post_switch_hook(command.clone());
                     println!("Added post-switch hook: {command}");
-                }
+                },
             }
             state.save()?;
-        }
+        },
         HookCommands::Remove { hook_type, index } => {
             let removed = match hook_type {
                 HookType::PreSwitch => state.remove_pre_switch_hook(index),
@@ -1562,7 +1561,7 @@ pub fn handle_hooks(command: crate::cli::HookCommands) -> Result<()> {
             } else {
                 println!("No hook found at index {index}.");
             }
-        }
+        },
         HookCommands::List => {
             println!("Workspace hooks:\n");
 
@@ -1585,12 +1584,12 @@ pub fn handle_hooks(command: crate::cli::HookCommands) -> Result<()> {
                     println!("    [{i}] {cmd}");
                 }
             }
-        }
+        },
         HookCommands::Clear => {
             state.clear_hooks();
             state.save()?;
             println!("Cleared all hooks.");
-        }
+        },
     }
 
     Ok(())
@@ -1611,13 +1610,13 @@ pub fn handle_watch(interval: u64, name: Option<String>) -> Result<()> {
         n
     } else {
         let state = DeskState::load()?;
-        match state.get_current(&repo_path) {
-            Some(n) => n.clone(),
-            None => {
-                println!("No active workspace. Specify a name with --name or open a workspace first.");
-                std::process::exit(1);
-            }
-        }
+        let Some(n) = state.get_current(&repo_path) else {
+            println!(
+                "No active workspace. Specify a name with --name or open a workspace first."
+            );
+            std::process::exit(1);
+        };
+        n.clone()
     };
 
     // Verify workspace exists
@@ -1627,7 +1626,7 @@ pub fn handle_watch(interval: u64, name: Option<String>) -> Result<()> {
     }
 
     println!("Watching workspace '{workspace_name}'...");
-    println!("Auto-saving every {} seconds. Press Ctrl+C to stop.\n", interval);
+    println!("Auto-saving every {interval} seconds. Press Ctrl+C to stop.\n");
 
     loop {
         thread::sleep(Duration::from_secs(interval));
@@ -1654,7 +1653,8 @@ pub fn handle_watch(interval: u64, name: Option<String>) -> Result<()> {
             store.save(&workspace, true)?;
 
             let now = chrono::Local::now();
-            println!("[{}] Saved workspace state (branch: {}, {} changes)",
+            println!(
+                "[{}] Saved workspace state (branch: {}, {} changes)",
                 now.format("%H:%M:%S"),
                 workspace.branch,
                 total_changes
@@ -1677,25 +1677,22 @@ pub fn handle_note(name: &str, command: crate::cli::NoteCommands) -> Result<()> 
 
     let store = FileWorkspaceStore::new()?;
 
-    let mut workspace = match store.load(name)? {
-        Some(ws) => ws,
-        None => {
-            println!("Workspace '{name}' not found.");
-            std::process::exit(1);
-        }
+    let Some(mut workspace) = store.load(name)? else {
+        println!("Workspace '{name}' not found.");
+        std::process::exit(1);
     };
 
     match command {
         NoteCommands::Add { text } => {
             let note = WorkspaceNote {
-                text: text.clone(),
+                text,
                 created_at: chrono::Utc::now(),
             };
             workspace.metadata.notes.push(note);
             workspace.touch();
             store.save(&workspace, true)?;
             println!("Added note to '{name}'.");
-        }
+        },
         NoteCommands::List => {
             if workspace.metadata.notes.is_empty() {
                 println!("No notes on workspace '{name}'.");
@@ -1706,14 +1703,14 @@ pub fn handle_note(name: &str, command: crate::cli::NoteCommands) -> Result<()> 
                     println!("  [{}] {} ({})", i, note.text, time);
                 }
             }
-        }
+        },
         NoteCommands::Clear => {
             let count = workspace.metadata.notes.len();
             workspace.metadata.notes.clear();
             workspace.touch();
             store.save(&workspace, true)?;
             println!("Cleared {count} note(s) from '{name}'.");
-        }
+        },
     }
 
     Ok(())
@@ -1752,7 +1749,7 @@ pub fn handle_bulk(command: crate::cli::BulkCommands) -> Result<()> {
                 }
             }
             println!("\nDeleted {deleted} workspace(s).");
-        }
+        },
         BulkCommands::Tag { names, tags } => {
             let mut tagged = 0;
             for name in &names {
@@ -1771,26 +1768,26 @@ pub fn handle_bulk(command: crate::cli::BulkCommands) -> Result<()> {
                 }
             }
             println!("Added {} tag(s) to {tagged} workspace(s).", tags.len());
-        }
+        },
         BulkCommands::Archive { names } => {
             let mut archived = 0;
             for name in &names {
                 if let Some(mut ws) = store.load(name)? {
-                    if !ws.metadata.archived {
+                    if ws.metadata.archived {
+                        println!("'{name}' already archived.");
+                    } else {
                         ws.metadata.archived = true;
                         ws.touch();
                         store.save(&ws, true)?;
                         println!("Archived '{name}'.");
                         archived += 1;
-                    } else {
-                        println!("'{name}' already archived.");
                     }
                 } else {
                     println!("Workspace '{name}' not found.");
                 }
             }
             println!("\nArchived {archived} workspace(s).");
-        }
+        },
         BulkCommands::Export { names, output } => {
             let output_dir = std::path::Path::new(&output);
             if !output_dir.exists() {
@@ -1800,7 +1797,7 @@ pub fn handle_bulk(command: crate::cli::BulkCommands) -> Result<()> {
             let mut exported = 0;
             for name in &names {
                 if let Some(ws) = store.load(name)? {
-                    let file_path = output_dir.join(format!("{}.json", name));
+                    let file_path = output_dir.join(format!("{name}.json"));
                     let json = serde_json::to_string_pretty(&ws)?;
                     std::fs::write(&file_path, json)?;
                     println!("Exported '{name}' to {}", file_path.display());
@@ -1810,7 +1807,7 @@ pub fn handle_bulk(command: crate::cli::BulkCommands) -> Result<()> {
                 }
             }
             println!("\nExported {exported} workspace(s).");
-        }
+        },
     }
 
     Ok(())
@@ -1824,9 +1821,7 @@ pub fn handle_interactive_open() -> Result<()> {
     let workspaces = store.list()?;
 
     // Filter out archived workspaces
-    let active: Vec<_> = workspaces.iter()
-        .filter(|w| !w.metadata.archived)
-        .collect();
+    let active: Vec<_> = workspaces.iter().filter(|w| !w.metadata.archived).collect();
 
     if active.is_empty() {
         println!("No workspaces available.");
@@ -1857,7 +1852,7 @@ pub fn handle_interactive_open() -> Result<()> {
         _ => {
             println!("Invalid selection.");
             std::process::exit(1);
-        }
+        },
     };
 
     let selected = active[selection - 1];

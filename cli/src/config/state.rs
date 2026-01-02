@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 use std::fs;
+#[cfg(test)]
 use std::path::PathBuf;
+use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -79,13 +81,13 @@ impl DeskState {
     }
 
     /// Get the current workspace for a repository.
-    pub fn get_current(&self, repo_path: &PathBuf) -> Option<&String> {
+    pub fn get_current(&self, repo_path: &Path) -> Option<&String> {
         let key = repo_path.to_string_lossy().to_string();
         self.current_workspaces.get(&key)
     }
 
     /// Set the current workspace for a repository.
-    pub fn set_current(&mut self, repo_path: &PathBuf, workspace_name: &str) {
+    pub fn set_current(&mut self, repo_path: &Path, workspace_name: &str) {
         let key = repo_path.to_string_lossy().to_string();
         self.current_workspaces
             .insert(key.clone(), workspace_name.to_string());
@@ -95,7 +97,7 @@ impl DeskState {
     }
 
     /// Clear the current workspace for a repository.
-    pub fn clear_current(&mut self, repo_path: &PathBuf) {
+    pub fn clear_current(&mut self, repo_path: &Path) {
         let key = repo_path.to_string_lossy().to_string();
         self.current_workspaces.remove(&key);
     }
@@ -124,7 +126,7 @@ impl DeskState {
     }
 
     /// Get history filtered by repository path.
-    pub fn get_history_for_repo(&self, repo_path: &PathBuf, limit: usize) -> Vec<&HistoryEntry> {
+    pub fn get_history_for_repo(&self, repo_path: &Path, limit: usize) -> Vec<&HistoryEntry> {
         let key = repo_path.to_string_lossy().to_string();
         self.history
             .iter()
@@ -135,12 +137,16 @@ impl DeskState {
 
     /// Resolve a name to a workspace name (handling aliases).
     pub fn resolve_alias(&self, name: &str) -> String {
-        self.aliases.get(name).cloned().unwrap_or_else(|| name.to_string())
+        self.aliases
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
     }
 
     /// Set an alias for a workspace.
     pub fn set_alias(&mut self, alias: &str, workspace: &str) {
-        self.aliases.insert(alias.to_string(), workspace.to_string());
+        self.aliases
+            .insert(alias.to_string(), workspace.to_string());
     }
 
     /// Remove an alias.
@@ -149,7 +155,7 @@ impl DeskState {
     }
 
     /// Get all aliases.
-    pub fn get_aliases(&self) -> &HashMap<String, String> {
+    pub const fn get_aliases(&self) -> &HashMap<String, String> {
         &self.aliases
     }
 
@@ -190,17 +196,20 @@ impl DeskState {
     }
 
     /// Record when a workspace was opened (for time tracking).
-    pub fn record_workspace_opened(&mut self, repo_path: &PathBuf) {
+    pub fn record_workspace_opened(&mut self, repo_path: &Path) {
         let key = repo_path.to_string_lossy().to_string();
         self.current_opened_at.insert(key, Utc::now());
     }
 
     /// Get the duration since the current workspace was opened.
-    pub fn get_time_in_workspace(&self, repo_path: &PathBuf) -> Option<u64> {
+    #[allow(dead_code)]
+    pub fn get_time_in_workspace(&self, repo_path: &Path) -> Option<u64> {
         let key = repo_path.to_string_lossy().to_string();
         self.current_opened_at.get(&key).map(|opened_at| {
             let duration = Utc::now().signed_duration_since(*opened_at);
-            duration.num_seconds().max(0) as u64
+            #[allow(clippy::cast_sign_loss)]
+            let secs = duration.num_seconds().max(0) as u64;
+            secs
         })
     }
 }
@@ -253,5 +262,156 @@ mod tests {
             restored.get_current(&PathBuf::from("/repo2")),
             Some(&"ws2".to_string())
         );
+    }
+
+    #[test]
+    fn set_current_adds_to_history() {
+        let mut state = DeskState::default();
+        let repo = PathBuf::from("/home/user/project");
+
+        state.set_current(&repo, "feature-1");
+        state.set_current(&repo, "feature-2");
+
+        assert_eq!(state.history.len(), 2);
+        assert_eq!(state.history[0].workspace, "feature-2");
+        assert_eq!(state.history[1].workspace, "feature-1");
+    }
+
+    #[test]
+    fn get_history_respects_limit() {
+        let mut state = DeskState::default();
+        let repo = PathBuf::from("/repo");
+
+        for i in 0..10 {
+            state.set_current(&repo, &format!("ws-{i}"));
+        }
+
+        let history = state.get_history(5);
+        assert_eq!(history.len(), 5);
+        assert_eq!(history[0].workspace, "ws-9");
+    }
+
+    #[test]
+    fn get_history_for_repo_filters_by_repo() {
+        let mut state = DeskState::default();
+        let repo1 = PathBuf::from("/repo1");
+        let repo2 = PathBuf::from("/repo2");
+
+        state.set_current(&repo1, "ws-a");
+        state.set_current(&repo2, "ws-b");
+        state.set_current(&repo1, "ws-c");
+
+        let history = state.get_history_for_repo(&repo1, 10);
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|e| e.repo_path == "/repo1"));
+    }
+
+    #[test]
+    fn history_truncates_at_max() {
+        let mut state = DeskState::default();
+        let repo = PathBuf::from("/repo");
+
+        // Add more than MAX_HISTORY_ENTRIES
+        for i in 0..60 {
+            state.set_current(&repo, &format!("ws-{i}"));
+        }
+
+        // Should be capped at MAX_HISTORY_ENTRIES (50)
+        assert!(state.history.len() <= 50);
+    }
+
+    #[test]
+    fn set_and_get_alias() {
+        let mut state = DeskState::default();
+        state.set_alias("f", "feature-branch");
+
+        assert_eq!(state.resolve_alias("f"), "feature-branch".to_string());
+        assert_eq!(state.resolve_alias("unknown"), "unknown".to_string());
+    }
+
+    #[test]
+    fn remove_alias() {
+        let mut state = DeskState::default();
+        state.set_alias("f", "feature-branch");
+
+        assert!(state.remove_alias("f"));
+        assert!(!state.remove_alias("f")); // Already removed
+        assert_eq!(state.resolve_alias("f"), "f".to_string());
+    }
+
+    #[test]
+    fn get_aliases_returns_all() {
+        let mut state = DeskState::default();
+        state.set_alias("a", "workspace-a");
+        state.set_alias("b", "workspace-b");
+
+        let aliases = state.get_aliases();
+        assert_eq!(aliases.len(), 2);
+        assert_eq!(aliases.get("a"), Some(&"workspace-a".to_string()));
+    }
+
+    #[test]
+    fn add_and_remove_pre_switch_hook() {
+        let mut state = DeskState::default();
+        state.add_pre_switch_hook("echo before".to_string());
+        state.add_pre_switch_hook("npm run build".to_string());
+
+        assert_eq!(state.pre_switch_hooks.len(), 2);
+
+        assert!(state.remove_pre_switch_hook(0));
+        assert_eq!(state.pre_switch_hooks.len(), 1);
+        assert_eq!(state.pre_switch_hooks[0], "npm run build");
+
+        assert!(!state.remove_pre_switch_hook(5)); // Out of bounds
+    }
+
+    #[test]
+    fn add_and_remove_post_switch_hook() {
+        let mut state = DeskState::default();
+        state.add_post_switch_hook("echo after".to_string());
+
+        assert_eq!(state.post_switch_hooks.len(), 1);
+
+        assert!(state.remove_post_switch_hook(0));
+        assert!(state.post_switch_hooks.is_empty());
+    }
+
+    #[test]
+    fn clear_hooks() {
+        let mut state = DeskState::default();
+        state.add_pre_switch_hook("pre".to_string());
+        state.add_post_switch_hook("post".to_string());
+
+        state.clear_hooks();
+
+        assert!(state.pre_switch_hooks.is_empty());
+        assert!(state.post_switch_hooks.is_empty());
+    }
+
+    #[test]
+    fn record_workspace_opened() {
+        let mut state = DeskState::default();
+        let repo = PathBuf::from("/repo");
+
+        state.record_workspace_opened(&repo);
+
+        assert!(state.current_opened_at.contains_key("/repo"));
+    }
+
+    #[test]
+    fn multiple_repos_tracked_independently() {
+        let mut state = DeskState::default();
+        let repo1 = PathBuf::from("/repo1");
+        let repo2 = PathBuf::from("/repo2");
+
+        state.set_current(&repo1, "ws-1");
+        state.set_current(&repo2, "ws-2");
+
+        assert_eq!(state.get_current(&repo1), Some(&"ws-1".to_string()));
+        assert_eq!(state.get_current(&repo2), Some(&"ws-2".to_string()));
+
+        state.clear_current(&repo1);
+        assert_eq!(state.get_current(&repo1), None);
+        assert_eq!(state.get_current(&repo2), Some(&"ws-2".to_string()));
     }
 }

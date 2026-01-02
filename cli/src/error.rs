@@ -132,7 +132,9 @@ pub enum DeskError {
     WorkspaceNotSynced(String),
 
     /// Pro subscription required for this feature.
-    #[error("This feature requires a Pro subscription. Visit https://getdesk.dev/pricing to upgrade.")]
+    #[error(
+        "This feature requires a Pro subscription. Visit https://getdesk.dev/pricing to upgrade."
+    )]
     SubscriptionRequired,
 }
 

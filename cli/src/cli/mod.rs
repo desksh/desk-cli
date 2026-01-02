@@ -4,6 +4,6 @@ pub mod args;
 pub mod commands;
 
 pub use args::{
-    AliasCommands, AuthCommands, BulkCommands, Cli, Commands, HookCommands, HookType,
-    NoteCommands, SyncCommands, TagCommands,
+    AliasCommands, AuthCommands, BulkCommands, Cli, Commands, HookCommands, HookType, NoteCommands,
+    SyncCommands, TagCommands,
 };

@@ -60,15 +60,15 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Sync { command } => match command {
             SyncCommands::Push { name, force } => {
                 cli::commands::handle_sync_push(name, force).await
-            }
+            },
             SyncCommands::Pull { name, force } => {
                 cli::commands::handle_sync_pull(name, force).await
-            }
+            },
             SyncCommands::Status => cli::commands::handle_sync_status().await,
         },
         Commands::Delete { name, cloud, yes } => {
             cli::commands::handle_delete(&name, cloud, yes).await
-        }
+        },
         Commands::Rename {
             name,
             new_name,
@@ -84,17 +84,28 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Export { name, output } => cli::commands::handle_export(&name, output),
         Commands::Import { file, name, force } => cli::commands::handle_import(&file, name, force),
         Commands::Clean { execute } => cli::commands::handle_clean(execute),
-        Commands::Prompt => cli::commands::handle_prompt(),
-        Commands::Init { shell } => cli::commands::handle_init(shell),
+        Commands::Prompt => {
+            cli::commands::handle_prompt();
+            Ok(())
+        },
+        Commands::Init { shell } => {
+            cli::commands::handle_init(shell);
+            Ok(())
+        },
         Commands::Search {
             query,
             name_only,
             branch_only,
         } => cli::commands::handle_search(&query, name_only, branch_only),
-        Commands::Completions { shell } => cli::commands::handle_completions(shell),
+        Commands::Completions { shell } => {
+            cli::commands::handle_completions(shell);
+            Ok(())
+        },
         Commands::Doctor => cli::commands::handle_doctor(),
         Commands::History { limit, repo_only } => cli::commands::handle_history(limit, repo_only),
-        Commands::Config { key, value, list } => cli::commands::handle_config(key, value, list),
+        Commands::Config { key, value, list } => {
+            cli::commands::handle_config(key.as_deref(), value.as_deref(), list)
+        },
         Commands::Tag { name, command } => cli::commands::handle_tag(&name, command),
         Commands::Archive { name } => cli::commands::handle_archive(&name),
         Commands::Unarchive { name } => cli::commands::handle_unarchive(&name),

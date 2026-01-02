@@ -456,14 +456,14 @@ impl DeskApiClient {
                         message,
                     }
                 }
-            }
+            },
             409 => {
                 // Version conflict
                 DeskError::ApiError {
                     status: status_code,
                     message,
                 }
-            }
+            },
             503 => DeskError::ApiUnavailable,
             _ => DeskError::ApiError {
                 status: status_code,
@@ -563,5 +563,109 @@ mod tests {
         assert!(ws.description.is_none());
         assert!(ws.last_synced_at.is_none());
         assert_eq!(ws.version, 1);
+    }
+
+    #[test]
+    fn workspace_state_without_stash() {
+        let state = WorkspaceState {
+            branch: "develop".to_string(),
+            commit_sha: "deadbeef".to_string(),
+            stash_name: None,
+            repo_path: "/path/to/repo".to_string(),
+            metadata: WorkspaceStateMetadata::default(),
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        let parsed: WorkspaceState = serde_json::from_str(&json).unwrap();
+
+        assert!(parsed.stash_name.is_none());
+        assert_eq!(parsed.branch, "develop");
+    }
+
+    #[test]
+    fn workspace_state_metadata_with_values() {
+        let metadata = WorkspaceStateMetadata {
+            uncommitted_files: Some(10),
+            was_dirty: Some(false),
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let parsed: WorkspaceStateMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.uncommitted_files, Some(10));
+        assert_eq!(parsed.was_dirty, Some(false));
+    }
+
+    #[test]
+    fn remote_workspace_with_full_metadata() {
+        let json = r#"{
+            "id": "full-uuid",
+            "name": "full-workspace",
+            "description": "A fully populated workspace",
+            "state": {
+                "branch": "feature/full",
+                "commit_sha": "1234567890abcdef",
+                "stash_name": "desk: feature/full snapshot",
+                "repo_path": "/home/dev/project",
+                "metadata": {
+                    "uncommitted_files": 7,
+                    "was_dirty": true
+                }
+            },
+            "version": 42,
+            "last_synced_at": "2024-06-15T14:30:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-06-15T14:30:00Z"
+        }"#;
+
+        let ws: RemoteWorkspace = serde_json::from_str(json).unwrap();
+
+        assert_eq!(ws.name, "full-workspace");
+        assert_eq!(ws.state.stash_name, Some("desk: feature/full snapshot".to_string()));
+        assert_eq!(ws.state.metadata.uncommitted_files, Some(7));
+        assert_eq!(ws.state.metadata.was_dirty, Some(true));
+        assert_eq!(ws.version, 42);
+    }
+
+    #[test]
+    fn workspace_state_preserves_repo_path() {
+        let paths = vec![
+            "/home/user/projects/app",
+            "/Users/dev/code/project",
+            "C:\\Users\\Dev\\Projects",
+            "/opt/workspace",
+        ];
+
+        for path in paths {
+            let state = WorkspaceState {
+                branch: "main".to_string(),
+                commit_sha: "abc".to_string(),
+                stash_name: None,
+                repo_path: path.to_string(),
+                metadata: WorkspaceStateMetadata::default(),
+            };
+
+            let json = serde_json::to_string(&state).unwrap();
+            let parsed: WorkspaceState = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(parsed.repo_path, path);
+        }
+    }
+
+    #[test]
+    fn api_client_can_be_created() {
+        let config = ApiConfig::default();
+        let client = DeskApiClient::new(&config);
+
+        assert!(client.is_ok());
+    }
+
+    #[tokio::test]
+    async fn api_client_starts_unauthenticated() {
+        let config = ApiConfig::default();
+        let client = DeskApiClient::new(&config).unwrap();
+
+        assert!(!client.is_authenticated().await);
+        assert!(client.get_credentials().await.is_none());
     }
 }

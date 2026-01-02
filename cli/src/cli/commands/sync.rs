@@ -43,13 +43,11 @@ pub async fn handle_sync_push(name: Option<String>, force: bool) -> Result<()> {
 
     // Get workspaces to push
     let workspaces = if let Some(ref name) = name {
-        match store.load(name)? {
-            Some(ws) => vec![ws],
-            None => {
-                println!("Workspace '{name}' not found locally.");
-                return Ok(());
-            }
-        }
+        let Some(ws) = store.load(name)? else {
+            println!("Workspace '{name}' not found locally.");
+            return Ok(());
+        };
+        vec![ws]
     } else {
         store.list()?
     };
@@ -64,7 +62,7 @@ pub async fn handle_sync_push(name: Option<String>, force: bool) -> Result<()> {
         Ok(ws) => ws,
         Err(DeskError::SubscriptionRequired) => {
             return Err(DeskError::SubscriptionRequired);
-        }
+        },
         Err(e) => return Err(e),
     };
 
@@ -113,11 +111,11 @@ pub async fn handle_sync_push(name: Option<String>, force: bool) -> Result<()> {
 
                     println!("  {} - pushed (updated)", workspace.name);
                     pushed += 1;
-                }
+                },
                 Err(e) => {
                     println!("  {} - failed: {e}", workspace.name);
                     skipped += 1;
-                }
+                },
             }
         } else {
             // Create new
@@ -134,11 +132,11 @@ pub async fn handle_sync_push(name: Option<String>, force: bool) -> Result<()> {
 
                     println!("  {} - pushed (new)", workspace.name);
                     pushed += 1;
-                }
+                },
                 Err(e) => {
                     println!("  {} - failed: {e}", workspace.name);
                     skipped += 1;
-                }
+                },
             }
         }
     }
@@ -181,7 +179,7 @@ pub async fn handle_sync_pull(name: Option<String>, force: bool) -> Result<()> {
         Ok(ws) => ws,
         Err(DeskError::SubscriptionRequired) => {
             return Err(DeskError::SubscriptionRequired);
-        }
+        },
         Err(e) => return Err(e),
     };
 
@@ -237,11 +235,11 @@ pub async fn handle_sync_pull(name: Option<String>, force: bool) -> Result<()> {
                     println!("  {} - pulled (new)", remote.name);
                 }
                 pulled += 1;
-            }
+            },
             Err(e) => {
                 println!("  {} - failed: {e}", remote.name);
                 skipped += 1;
-            }
+            },
         }
     }
 
@@ -294,7 +292,7 @@ pub async fn handle_sync_status() -> Result<()> {
                 }
             }
             return Ok(());
-        }
+        },
         Err(e) => return Err(e),
     };
 
@@ -327,28 +325,26 @@ pub async fn handle_sync_status() -> Result<()> {
             (Some(local_ws), Some(remote_ws)) => {
                 let local_version = local_ws.metadata.remote_version.unwrap_or(0);
 
-                let status = if local_version == remote_ws.version {
-                    "synced"
-                } else if local_version > remote_ws.version {
-                    "local ahead"
-                } else {
-                    "remote ahead"
+                let status = match local_version.cmp(&remote_ws.version) {
+                    std::cmp::Ordering::Equal => "synced",
+                    std::cmp::Ordering::Greater => "local ahead",
+                    std::cmp::Ordering::Less => "remote ahead",
                 };
 
                 println!(
                     "  {name}  [{status}] (local v{local_version}, remote v{})",
                     remote_ws.version
                 );
-            }
+            },
             (Some(_), None) => {
                 println!("  {name}  [local only]");
-            }
+            },
             (None, Some(_)) => {
                 println!("  {name}  [remote only]");
-            }
+            },
             (None, None) => {
                 // This shouldn't happen
-            }
+            },
         }
     }
 
@@ -380,8 +376,8 @@ fn state_to_workspace(remote: &RemoteWorkspace) -> Workspace {
         remote.state.commit_sha.clone(),
     );
 
-    ws.stash_name = remote.state.stash_name.clone();
-    ws.description = remote.description.clone();
+    ws.stash_name.clone_from(&remote.state.stash_name);
+    ws.description.clone_from(&remote.description);
     ws.created_at = remote.created_at;
     ws.updated_at = remote.updated_at;
     ws.metadata.uncommitted_files = remote.state.metadata.uncommitted_files;

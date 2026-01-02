@@ -533,7 +533,7 @@ pub enum AuthCommands {
     /// Log in to Desk using OAuth.
     Login {
         /// OAuth provider to use.
-        #[arg(short, long, value_enum, default_value = "github")]
+        #[arg(short, long, value_enum, default_value = "git-hub")]
         provider: ProviderArg,
 
         /// Skip opening the browser automatically.
@@ -561,5 +561,456 @@ impl From<ProviderArg> for AuthProvider {
             ProviderArg::GitHub => Self::GitHub,
             ProviderArg::Google => Self::Google,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn parse_open_command() {
+        let cli = Cli::try_parse_from(["desk", "open", "my-workspace"]).unwrap();
+        match cli.command {
+            Commands::Open { name, force, interactive, .. } => {
+                assert_eq!(name, Some("my-workspace".to_string()));
+                assert!(!force);
+                assert!(!interactive);
+            },
+            _ => panic!("Expected Open command"),
+        }
+    }
+
+    #[test]
+    fn parse_open_with_force() {
+        let cli = Cli::try_parse_from(["desk", "open", "ws", "--force"]).unwrap();
+        match cli.command {
+            Commands::Open { force, .. } => assert!(force),
+            _ => panic!("Expected Open command"),
+        }
+    }
+
+    #[test]
+    fn parse_open_interactive() {
+        let cli = Cli::try_parse_from(["desk", "open", "--interactive"]).unwrap();
+        match cli.command {
+            Commands::Open { interactive, name, .. } => {
+                assert!(interactive);
+                assert!(name.is_none());
+            },
+            _ => panic!("Expected Open command"),
+        }
+    }
+
+    #[test]
+    fn parse_list_command() {
+        let cli = Cli::try_parse_from(["desk", "list"]).unwrap();
+        match cli.command {
+            Commands::List { tag, archived, all } => {
+                assert!(tag.is_none());
+                assert!(!archived);
+                assert!(!all);
+            },
+            _ => panic!("Expected List command"),
+        }
+    }
+
+    #[test]
+    fn parse_list_with_tag() {
+        let cli = Cli::try_parse_from(["desk", "list", "--tag", "feature"]).unwrap();
+        match cli.command {
+            Commands::List { tag, .. } => {
+                assert_eq!(tag, Some("feature".to_string()));
+            },
+            _ => panic!("Expected List command"),
+        }
+    }
+
+    #[test]
+    fn parse_list_archived() {
+        let cli = Cli::try_parse_from(["desk", "list", "--archived"]).unwrap();
+        match cli.command {
+            Commands::List { archived, .. } => assert!(archived),
+            _ => panic!("Expected List command"),
+        }
+    }
+
+    #[test]
+    fn parse_status_command() {
+        let cli = Cli::try_parse_from(["desk", "status"]).unwrap();
+        assert!(matches!(cli.command, Commands::Status));
+    }
+
+    #[test]
+    fn parse_close_command() {
+        let cli = Cli::try_parse_from(["desk", "close"]).unwrap();
+        match cli.command {
+            Commands::Close { switch_to } => assert!(switch_to.is_none()),
+            _ => panic!("Expected Close command"),
+        }
+    }
+
+    #[test]
+    fn parse_close_with_switch() {
+        let cli = Cli::try_parse_from(["desk", "close", "--switch-to", "other"]).unwrap();
+        match cli.command {
+            Commands::Close { switch_to } => {
+                assert_eq!(switch_to, Some("other".to_string()));
+            },
+            _ => panic!("Expected Close command"),
+        }
+    }
+
+    #[test]
+    fn parse_delete_command() {
+        let cli = Cli::try_parse_from(["desk", "delete", "ws-name"]).unwrap();
+        match cli.command {
+            Commands::Delete { name, cloud, yes } => {
+                assert_eq!(name, "ws-name");
+                assert!(!cloud);
+                assert!(!yes);
+            },
+            _ => panic!("Expected Delete command"),
+        }
+    }
+
+    #[test]
+    fn parse_delete_with_yes() {
+        let cli = Cli::try_parse_from(["desk", "delete", "ws", "-y"]).unwrap();
+        match cli.command {
+            Commands::Delete { yes, .. } => assert!(yes),
+            _ => panic!("Expected Delete command"),
+        }
+    }
+
+    #[test]
+    fn parse_rename_command() {
+        let cli = Cli::try_parse_from(["desk", "rename", "old", "new"]).unwrap();
+        match cli.command {
+            Commands::Rename { name, new_name, cloud } => {
+                assert_eq!(name, "old");
+                assert_eq!(new_name, "new");
+                assert!(!cloud);
+            },
+            _ => panic!("Expected Rename command"),
+        }
+    }
+
+    #[test]
+    fn parse_info_command() {
+        let cli = Cli::try_parse_from(["desk", "info", "my-ws"]).unwrap();
+        match cli.command {
+            Commands::Info { name } => assert_eq!(name, "my-ws"),
+            _ => panic!("Expected Info command"),
+        }
+    }
+
+    #[test]
+    fn parse_clone_command() {
+        let cli = Cli::try_parse_from(["desk", "clone", "source", "target"]).unwrap();
+        match cli.command {
+            Commands::Clone { name, new_name } => {
+                assert_eq!(name, "source");
+                assert_eq!(new_name, "target");
+            },
+            _ => panic!("Expected Clone command"),
+        }
+    }
+
+    #[test]
+    fn parse_search_command() {
+        let cli = Cli::try_parse_from(["desk", "search", "query"]).unwrap();
+        match cli.command {
+            Commands::Search { query, name_only, branch_only } => {
+                assert_eq!(query, "query");
+                assert!(!name_only);
+                assert!(!branch_only);
+            },
+            _ => panic!("Expected Search command"),
+        }
+    }
+
+    #[test]
+    fn parse_search_name_only() {
+        let cli = Cli::try_parse_from(["desk", "search", "q", "--name-only"]).unwrap();
+        match cli.command {
+            Commands::Search { name_only, .. } => assert!(name_only),
+            _ => panic!("Expected Search command"),
+        }
+    }
+
+    #[test]
+    fn parse_doctor_command() {
+        let cli = Cli::try_parse_from(["desk", "doctor"]).unwrap();
+        assert!(matches!(cli.command, Commands::Doctor));
+    }
+
+    #[test]
+    fn parse_history_command() {
+        let cli = Cli::try_parse_from(["desk", "history"]).unwrap();
+        match cli.command {
+            Commands::History { limit, repo_only } => {
+                assert_eq!(limit, 10); // default
+                assert!(!repo_only);
+            },
+            _ => panic!("Expected History command"),
+        }
+    }
+
+    #[test]
+    fn parse_history_with_limit() {
+        let cli = Cli::try_parse_from(["desk", "history", "--limit", "5"]).unwrap();
+        match cli.command {
+            Commands::History { limit, .. } => assert_eq!(limit, 5),
+            _ => panic!("Expected History command"),
+        }
+    }
+
+    #[test]
+    fn parse_archive_command() {
+        let cli = Cli::try_parse_from(["desk", "archive", "ws"]).unwrap();
+        match cli.command {
+            Commands::Archive { name } => assert_eq!(name, "ws"),
+            _ => panic!("Expected Archive command"),
+        }
+    }
+
+    #[test]
+    fn parse_unarchive_command() {
+        let cli = Cli::try_parse_from(["desk", "unarchive", "ws"]).unwrap();
+        match cli.command {
+            Commands::Unarchive { name } => assert_eq!(name, "ws"),
+            _ => panic!("Expected Unarchive command"),
+        }
+    }
+
+    #[test]
+    fn parse_diff_command() {
+        let cli = Cli::try_parse_from(["desk", "diff", "ws1", "ws2"]).unwrap();
+        match cli.command {
+            Commands::Diff { workspace1, workspace2 } => {
+                assert_eq!(workspace1, "ws1");
+                assert_eq!(workspace2, "ws2");
+            },
+            _ => panic!("Expected Diff command"),
+        }
+    }
+
+    #[test]
+    fn parse_stats_command() {
+        let cli = Cli::try_parse_from(["desk", "stats"]).unwrap();
+        assert!(matches!(cli.command, Commands::Stats));
+    }
+
+    #[test]
+    fn parse_watch_command() {
+        let cli = Cli::try_parse_from(["desk", "watch"]).unwrap();
+        match cli.command {
+            Commands::Watch { interval, name } => {
+                assert_eq!(interval, 300); // default
+                assert!(name.is_none());
+            },
+            _ => panic!("Expected Watch command"),
+        }
+    }
+
+    #[test]
+    fn parse_watch_with_interval() {
+        let cli = Cli::try_parse_from(["desk", "watch", "--interval", "60"]).unwrap();
+        match cli.command {
+            Commands::Watch { interval, .. } => assert_eq!(interval, 60),
+            _ => panic!("Expected Watch command"),
+        }
+    }
+
+    #[test]
+    fn parse_tag_add() {
+        let cli = Cli::try_parse_from(["desk", "tag", "ws", "add", "tag1", "tag2"]).unwrap();
+        match cli.command {
+            Commands::Tag { name, command: TagCommands::Add { tags } } => {
+                assert_eq!(name, "ws");
+                assert_eq!(tags, vec!["tag1", "tag2"]);
+            },
+            _ => panic!("Expected Tag Add command"),
+        }
+    }
+
+    #[test]
+    fn parse_tag_remove() {
+        let cli = Cli::try_parse_from(["desk", "tag", "ws", "remove", "tag1"]).unwrap();
+        match cli.command {
+            Commands::Tag { command: TagCommands::Remove { tags }, .. } => {
+                assert_eq!(tags, vec!["tag1"]);
+            },
+            _ => panic!("Expected Tag Remove command"),
+        }
+    }
+
+    #[test]
+    fn parse_tag_list() {
+        let cli = Cli::try_parse_from(["desk", "tag", "ws", "list"]).unwrap();
+        match cli.command {
+            Commands::Tag { command: TagCommands::List, .. } => {},
+            _ => panic!("Expected Tag List command"),
+        }
+    }
+
+    #[test]
+    fn parse_alias_set() {
+        let cli = Cli::try_parse_from(["desk", "alias", "set", "f", "feature"]).unwrap();
+        match cli.command {
+            Commands::Alias { command: AliasCommands::Set { alias, workspace } } => {
+                assert_eq!(alias, "f");
+                assert_eq!(workspace, "feature");
+            },
+            _ => panic!("Expected Alias Set command"),
+        }
+    }
+
+    #[test]
+    fn parse_alias_remove() {
+        let cli = Cli::try_parse_from(["desk", "alias", "remove", "f"]).unwrap();
+        match cli.command {
+            Commands::Alias { command: AliasCommands::Remove { alias } } => {
+                assert_eq!(alias, "f");
+            },
+            _ => panic!("Expected Alias Remove command"),
+        }
+    }
+
+    #[test]
+    fn parse_hooks_add() {
+        let cli = Cli::try_parse_from(["desk", "hooks", "add", "pre-switch", "echo hello"]).unwrap();
+        match cli.command {
+            Commands::Hooks { command: HookCommands::Add { hook_type, command } } => {
+                assert!(matches!(hook_type, HookType::PreSwitch));
+                assert_eq!(command, "echo hello");
+            },
+            _ => panic!("Expected Hooks Add command"),
+        }
+    }
+
+    #[test]
+    fn parse_note_add() {
+        let cli = Cli::try_parse_from(["desk", "note", "ws", "add", "my note"]).unwrap();
+        match cli.command {
+            Commands::Note { name, command: NoteCommands::Add { text } } => {
+                assert_eq!(name, "ws");
+                assert_eq!(text, "my note");
+            },
+            _ => panic!("Expected Note Add command"),
+        }
+    }
+
+    #[test]
+    fn parse_bulk_delete() {
+        let cli = Cli::try_parse_from(["desk", "bulk", "delete", "ws1", "ws2", "-y"]).unwrap();
+        match cli.command {
+            Commands::Bulk { command: BulkCommands::Delete { names, yes } } => {
+                assert_eq!(names, vec!["ws1", "ws2"]);
+                assert!(yes);
+            },
+            _ => panic!("Expected Bulk Delete command"),
+        }
+    }
+
+    #[test]
+    fn parse_sync_push() {
+        let cli = Cli::try_parse_from(["desk", "sync", "push"]).unwrap();
+        match cli.command {
+            Commands::Sync { command: SyncCommands::Push { name, force } } => {
+                assert!(name.is_none());
+                assert!(!force);
+            },
+            _ => panic!("Expected Sync Push command"),
+        }
+    }
+
+    #[test]
+    fn parse_sync_pull_with_force() {
+        let cli = Cli::try_parse_from(["desk", "sync", "pull", "--force"]).unwrap();
+        match cli.command {
+            Commands::Sync { command: SyncCommands::Pull { force, .. } } => {
+                assert!(force);
+            },
+            _ => panic!("Expected Sync Pull command"),
+        }
+    }
+
+    #[test]
+    fn parse_auth_login() {
+        let cli = Cli::try_parse_from(["desk", "auth", "login"]).unwrap();
+        match cli.command {
+            Commands::Auth { command: AuthCommands::Login { provider, no_browser } } => {
+                assert!(matches!(provider, ProviderArg::GitHub)); // default
+                assert!(!no_browser);
+            },
+            _ => panic!("Expected Auth Login command"),
+        }
+    }
+
+    #[test]
+    fn parse_auth_login_google() {
+        // Note: clap converts PascalCase to kebab-case for value enum
+        let cli = Cli::try_parse_from(["desk", "auth", "login", "-p", "google"]).unwrap();
+        match cli.command {
+            Commands::Auth { command: AuthCommands::Login { provider, .. } } => {
+                assert!(matches!(provider, ProviderArg::Google));
+            },
+            _ => panic!("Expected Auth Login command"),
+        }
+    }
+
+    #[test]
+    fn parse_auth_logout() {
+        let cli = Cli::try_parse_from(["desk", "auth", "logout"]).unwrap();
+        match cli.command {
+            Commands::Auth { command: AuthCommands::Logout } => {},
+            _ => panic!("Expected Auth Logout command"),
+        }
+    }
+
+    #[test]
+    fn parse_auth_status() {
+        let cli = Cli::try_parse_from(["desk", "auth", "status"]).unwrap();
+        match cli.command {
+            Commands::Auth { command: AuthCommands::Status } => {},
+            _ => panic!("Expected Auth Status command"),
+        }
+    }
+
+    #[test]
+    fn parse_init_bash() {
+        let cli = Cli::try_parse_from(["desk", "init", "bash"]).unwrap();
+        match cli.command {
+            Commands::Init { shell } => {
+                assert!(matches!(shell, ShellType::Bash));
+            },
+            _ => panic!("Expected Init command"),
+        }
+    }
+
+    #[test]
+    fn parse_completions_zsh() {
+        let cli = Cli::try_parse_from(["desk", "completions", "zsh"]).unwrap();
+        match cli.command {
+            Commands::Completions { shell } => {
+                assert!(matches!(shell, ShellType::Zsh));
+            },
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn provider_arg_to_auth_provider() {
+        assert!(matches!(AuthProvider::from(ProviderArg::GitHub), AuthProvider::GitHub));
+        assert!(matches!(AuthProvider::from(ProviderArg::Google), AuthProvider::Google));
+    }
+
+    #[test]
+    fn global_verbose_flag() {
+        let cli = Cli::try_parse_from(["desk", "--verbose", "status"]).unwrap();
+        assert!(cli.verbose);
     }
 }
