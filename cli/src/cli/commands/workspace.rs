@@ -433,6 +433,269 @@ pub fn handle_info(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Handles the `desk clone <name> <new_name>` command.
+///
+/// Creates a copy of an existing workspace with a new name.
+///
+/// # Arguments
+///
+/// * `name` - The workspace to clone
+/// * `new_name` - The name for the new workspace
+///
+/// # Errors
+///
+/// Returns an error if the source workspace doesn't exist or target already exists.
+pub fn handle_clone(name: &str, new_name: &str) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    // Load source workspace
+    let workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    // Check if target already exists
+    if store.exists(new_name)? {
+        println!("Workspace '{new_name}' already exists.");
+        std::process::exit(1);
+    }
+
+    // Create clone with new name
+    let mut cloned = workspace.clone();
+    cloned.name = new_name.to_string();
+    cloned.touch();
+    // Clear sync metadata - clone is a new local workspace
+    cloned.metadata.remote_id = None;
+    cloned.metadata.remote_version = None;
+    cloned.metadata.last_synced_at = None;
+
+    store.save(&cloned, false)?;
+
+    println!("Cloned workspace '{name}' to '{new_name}'.");
+
+    Ok(())
+}
+
+/// Handles the `desk describe <name> <description>` command.
+///
+/// Updates the description of an existing workspace.
+///
+/// # Arguments
+///
+/// * `name` - The workspace name
+/// * `description` - The new description
+/// * `cloud` - If true, also update on the cloud
+///
+/// # Errors
+///
+/// Returns an error if the workspace doesn't exist.
+pub async fn handle_describe(name: &str, description: &str, cloud: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    // Load workspace
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    let is_synced = workspace.metadata.remote_id.is_some();
+    let remote_id = workspace.metadata.remote_id.clone();
+
+    // Update on cloud if requested and synced
+    if cloud && is_synced {
+        if let Some(ref id) = remote_id {
+            let config = load_config()?;
+            let client = DeskApiClient::new(&config.api)?;
+
+            if !client.load_credentials().await? {
+                return Err(DeskError::NotAuthenticated);
+            }
+
+            let version = workspace.metadata.remote_version.unwrap_or(0);
+
+            match client
+                .update_workspace(id, None, Some(description), None, version)
+                .await
+            {
+                Ok(updated) => {
+                    workspace.metadata.remote_version = Some(updated.version);
+                    println!("Updated description on cloud.");
+                }
+                Err(DeskError::SubscriptionRequired) => {
+                    println!("Warning: Could not update cloud (Pro subscription required).");
+                }
+                Err(e) => {
+                    println!("Warning: Failed to update cloud: {e}");
+                }
+            }
+        }
+    } else if cloud && !is_synced {
+        println!("Note: Workspace is not synced to cloud.");
+    }
+
+    // Update locally
+    workspace.description = Some(description.to_string());
+    workspace.touch();
+    store.save(&workspace, true)?;
+
+    println!("Updated description for workspace '{name}'.");
+
+    Ok(())
+}
+
+/// Handles the `desk export <name>` command.
+///
+/// Exports a workspace to a JSON file.
+///
+/// # Arguments
+///
+/// * `name` - The workspace to export
+/// * `output` - Optional output file path
+///
+/// # Errors
+///
+/// Returns an error if the workspace doesn't exist or file write fails.
+pub fn handle_export(name: &str, output: Option<String>) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    let workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    let output_path = output.unwrap_or_else(|| format!("{name}.json"));
+
+    let json = serde_json::to_string_pretty(&workspace)?;
+    std::fs::write(&output_path, json)?;
+
+    println!("Exported workspace '{name}' to '{output_path}'.");
+
+    Ok(())
+}
+
+/// Handles the `desk import <file>` command.
+///
+/// Imports a workspace from a JSON file.
+///
+/// # Arguments
+///
+/// * `file` - Path to the JSON file
+/// * `name` - Optional override for the workspace name
+/// * `force` - If true, overwrite existing workspace
+///
+/// # Errors
+///
+/// Returns an error if the file doesn't exist or is invalid.
+pub fn handle_import(file: &str, name: Option<String>, force: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+
+    // Read and parse the file
+    let contents = std::fs::read_to_string(file).map_err(|e| {
+        println!("Failed to read file '{file}': {e}");
+        e
+    })?;
+
+    let mut workspace: Workspace = serde_json::from_str(&contents).map_err(|e| {
+        println!("Invalid workspace file: {e}");
+        e
+    })?;
+
+    // Override name if provided
+    if let Some(new_name) = name {
+        workspace.name = new_name;
+    }
+
+    // Check if already exists
+    if !force && store.exists(&workspace.name)? {
+        println!(
+            "Workspace '{}' already exists. Use --force to overwrite.",
+            workspace.name
+        );
+        std::process::exit(1);
+    }
+
+    // Clear sync metadata on import
+    workspace.metadata.remote_id = None;
+    workspace.metadata.remote_version = None;
+    workspace.metadata.last_synced_at = None;
+    workspace.touch();
+
+    store.save(&workspace, force)?;
+
+    println!("Imported workspace '{}'.", workspace.name);
+
+    Ok(())
+}
+
+/// Handles the `desk clean` command.
+///
+/// Cleans up orphaned desk stashes from git.
+///
+/// # Arguments
+///
+/// * `execute` - If true, actually delete stashes. Otherwise, dry-run.
+///
+/// # Errors
+///
+/// Returns an error if git operations fail.
+pub fn handle_clean(execute: bool) -> Result<()> {
+    let store = FileWorkspaceStore::new()?;
+    let mut git = Git2Operations::from_current_dir()?;
+
+    // Get all stashes
+    let stashes = git.stash_list()?;
+
+    // Get all workspace stash names
+    let workspaces = store.list()?;
+    let referenced_stashes: std::collections::HashSet<_> = workspaces
+        .iter()
+        .filter_map(|ws| ws.stash_name.as_ref())
+        .collect();
+
+    // Find orphaned desk stashes
+    let orphaned: Vec<_> = stashes
+        .iter()
+        .filter(|s| s.message.starts_with("desk:") && !referenced_stashes.contains(&s.message))
+        .collect();
+
+    if orphaned.is_empty() {
+        println!("No orphaned desk stashes found.");
+        return Ok(());
+    }
+
+    println!("Found {} orphaned desk stash(es):\n", orphaned.len());
+
+    for stash in &orphaned {
+        println!("  stash@{{{}}}: {}", stash.index, stash.message);
+    }
+
+    if execute {
+        println!();
+        // Drop stashes in reverse order to preserve indices
+        let mut dropped = 0;
+        for stash in orphaned.iter().rev() {
+            if git.stash_drop(stash.index).is_ok() {
+                dropped += 1;
+            }
+        }
+        println!("Dropped {dropped} stash(es).");
+    } else {
+        println!();
+        println!("Run with --execute to delete these stashes.");
+    }
+
+    Ok(())
+}
+
 /// Saves the current git state as a workspace.
 ///
 /// Captures the current branch, commit SHA, and optionally stashes uncommitted

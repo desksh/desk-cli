@@ -111,6 +111,68 @@ pub enum Commands {
         /// Name of the workspace to inspect.
         name: String,
     },
+
+    /// Clone/duplicate a workspace.
+    ///
+    /// Creates a copy of an existing workspace with a new name.
+    Clone {
+        /// Name of the workspace to clone.
+        name: String,
+
+        /// Name for the new workspace.
+        new_name: String,
+    },
+
+    /// Update the description of a workspace.
+    Describe {
+        /// Name of the workspace.
+        name: String,
+
+        /// New description for the workspace.
+        description: String,
+
+        /// Also update on the cloud (if synced).
+        #[arg(long)]
+        cloud: bool,
+    },
+
+    /// Export a workspace to a JSON file.
+    ///
+    /// Creates a portable backup of workspace metadata.
+    Export {
+        /// Name of the workspace to export.
+        name: String,
+
+        /// Output file path (defaults to <name>.json).
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
+    /// Import a workspace from a JSON file.
+    ///
+    /// Restores workspace metadata from a backup file.
+    Import {
+        /// Path to the JSON file to import.
+        file: String,
+
+        /// Override the workspace name.
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Overwrite if workspace already exists.
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Clean up orphaned desk stashes.
+    ///
+    /// Removes git stashes created by desk that are no longer referenced
+    /// by any workspace.
+    Clean {
+        /// Actually delete stashes (dry-run by default).
+        #[arg(long)]
+        execute: bool,
+    },
 }
 
 /// Sync subcommands.

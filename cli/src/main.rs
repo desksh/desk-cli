@@ -74,5 +74,14 @@ async fn run(cli: Cli) -> Result<()> {
             cloud,
         } => cli::commands::handle_rename(&name, &new_name, cloud).await,
         Commands::Info { name } => cli::commands::handle_info(&name),
+        Commands::Clone { name, new_name } => cli::commands::handle_clone(&name, &new_name),
+        Commands::Describe {
+            name,
+            description,
+            cloud,
+        } => cli::commands::handle_describe(&name, &description, cloud).await,
+        Commands::Export { name, output } => cli::commands::handle_export(&name, output),
+        Commands::Import { file, name, force } => cli::commands::handle_import(&file, name, force),
+        Commands::Clean { execute } => cli::commands::handle_clean(execute),
     }
 }
