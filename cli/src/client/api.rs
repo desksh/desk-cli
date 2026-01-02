@@ -621,7 +621,10 @@ mod tests {
         let ws: RemoteWorkspace = serde_json::from_str(json).unwrap();
 
         assert_eq!(ws.name, "full-workspace");
-        assert_eq!(ws.state.stash_name, Some("desk: feature/full snapshot".to_string()));
+        assert_eq!(
+            ws.state.stash_name,
+            Some("desk: feature/full snapshot".to_string())
+        );
         assert_eq!(ws.state.metadata.uncommitted_files, Some(7));
         assert_eq!(ws.state.metadata.was_dirty, Some(true));
         assert_eq!(ws.version, 42);

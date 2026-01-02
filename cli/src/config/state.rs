@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
-use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

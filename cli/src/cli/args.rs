@@ -573,7 +573,12 @@ mod tests {
     fn parse_open_command() {
         let cli = Cli::try_parse_from(["desk", "open", "my-workspace"]).unwrap();
         match cli.command {
-            Commands::Open { name, force, interactive, .. } => {
+            Commands::Open {
+                name,
+                force,
+                interactive,
+                ..
+            } => {
                 assert_eq!(name, Some("my-workspace".to_string()));
                 assert!(!force);
                 assert!(!interactive);
@@ -595,7 +600,9 @@ mod tests {
     fn parse_open_interactive() {
         let cli = Cli::try_parse_from(["desk", "open", "--interactive"]).unwrap();
         match cli.command {
-            Commands::Open { interactive, name, .. } => {
+            Commands::Open {
+                interactive, name, ..
+            } => {
                 assert!(interactive);
                 assert!(name.is_none());
             },
@@ -688,7 +695,11 @@ mod tests {
     fn parse_rename_command() {
         let cli = Cli::try_parse_from(["desk", "rename", "old", "new"]).unwrap();
         match cli.command {
-            Commands::Rename { name, new_name, cloud } => {
+            Commands::Rename {
+                name,
+                new_name,
+                cloud,
+            } => {
                 assert_eq!(name, "old");
                 assert_eq!(new_name, "new");
                 assert!(!cloud);
@@ -722,7 +733,11 @@ mod tests {
     fn parse_search_command() {
         let cli = Cli::try_parse_from(["desk", "search", "query"]).unwrap();
         match cli.command {
-            Commands::Search { query, name_only, branch_only } => {
+            Commands::Search {
+                query,
+                name_only,
+                branch_only,
+            } => {
                 assert_eq!(query, "query");
                 assert!(!name_only);
                 assert!(!branch_only);
@@ -789,7 +804,10 @@ mod tests {
     fn parse_diff_command() {
         let cli = Cli::try_parse_from(["desk", "diff", "ws1", "ws2"]).unwrap();
         match cli.command {
-            Commands::Diff { workspace1, workspace2 } => {
+            Commands::Diff {
+                workspace1,
+                workspace2,
+            } => {
                 assert_eq!(workspace1, "ws1");
                 assert_eq!(workspace2, "ws2");
             },
@@ -828,7 +846,10 @@ mod tests {
     fn parse_tag_add() {
         let cli = Cli::try_parse_from(["desk", "tag", "ws", "add", "tag1", "tag2"]).unwrap();
         match cli.command {
-            Commands::Tag { name, command: TagCommands::Add { tags } } => {
+            Commands::Tag {
+                name,
+                command: TagCommands::Add { tags },
+            } => {
                 assert_eq!(name, "ws");
                 assert_eq!(tags, vec!["tag1", "tag2"]);
             },
@@ -840,7 +861,10 @@ mod tests {
     fn parse_tag_remove() {
         let cli = Cli::try_parse_from(["desk", "tag", "ws", "remove", "tag1"]).unwrap();
         match cli.command {
-            Commands::Tag { command: TagCommands::Remove { tags }, .. } => {
+            Commands::Tag {
+                command: TagCommands::Remove { tags },
+                ..
+            } => {
                 assert_eq!(tags, vec!["tag1"]);
             },
             _ => panic!("Expected Tag Remove command"),
@@ -851,7 +875,10 @@ mod tests {
     fn parse_tag_list() {
         let cli = Cli::try_parse_from(["desk", "tag", "ws", "list"]).unwrap();
         match cli.command {
-            Commands::Tag { command: TagCommands::List, .. } => {},
+            Commands::Tag {
+                command: TagCommands::List,
+                ..
+            } => {},
             _ => panic!("Expected Tag List command"),
         }
     }
@@ -860,7 +887,9 @@ mod tests {
     fn parse_alias_set() {
         let cli = Cli::try_parse_from(["desk", "alias", "set", "f", "feature"]).unwrap();
         match cli.command {
-            Commands::Alias { command: AliasCommands::Set { alias, workspace } } => {
+            Commands::Alias {
+                command: AliasCommands::Set { alias, workspace },
+            } => {
                 assert_eq!(alias, "f");
                 assert_eq!(workspace, "feature");
             },
@@ -872,7 +901,9 @@ mod tests {
     fn parse_alias_remove() {
         let cli = Cli::try_parse_from(["desk", "alias", "remove", "f"]).unwrap();
         match cli.command {
-            Commands::Alias { command: AliasCommands::Remove { alias } } => {
+            Commands::Alias {
+                command: AliasCommands::Remove { alias },
+            } => {
                 assert_eq!(alias, "f");
             },
             _ => panic!("Expected Alias Remove command"),
@@ -881,9 +912,12 @@ mod tests {
 
     #[test]
     fn parse_hooks_add() {
-        let cli = Cli::try_parse_from(["desk", "hooks", "add", "pre-switch", "echo hello"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["desk", "hooks", "add", "pre-switch", "echo hello"]).unwrap();
         match cli.command {
-            Commands::Hooks { command: HookCommands::Add { hook_type, command } } => {
+            Commands::Hooks {
+                command: HookCommands::Add { hook_type, command },
+            } => {
                 assert!(matches!(hook_type, HookType::PreSwitch));
                 assert_eq!(command, "echo hello");
             },
@@ -895,7 +929,10 @@ mod tests {
     fn parse_note_add() {
         let cli = Cli::try_parse_from(["desk", "note", "ws", "add", "my note"]).unwrap();
         match cli.command {
-            Commands::Note { name, command: NoteCommands::Add { text } } => {
+            Commands::Note {
+                name,
+                command: NoteCommands::Add { text },
+            } => {
                 assert_eq!(name, "ws");
                 assert_eq!(text, "my note");
             },
@@ -907,7 +944,9 @@ mod tests {
     fn parse_bulk_delete() {
         let cli = Cli::try_parse_from(["desk", "bulk", "delete", "ws1", "ws2", "-y"]).unwrap();
         match cli.command {
-            Commands::Bulk { command: BulkCommands::Delete { names, yes } } => {
+            Commands::Bulk {
+                command: BulkCommands::Delete { names, yes },
+            } => {
                 assert_eq!(names, vec!["ws1", "ws2"]);
                 assert!(yes);
             },
@@ -919,7 +958,9 @@ mod tests {
     fn parse_sync_push() {
         let cli = Cli::try_parse_from(["desk", "sync", "push"]).unwrap();
         match cli.command {
-            Commands::Sync { command: SyncCommands::Push { name, force } } => {
+            Commands::Sync {
+                command: SyncCommands::Push { name, force },
+            } => {
                 assert!(name.is_none());
                 assert!(!force);
             },
@@ -931,7 +972,9 @@ mod tests {
     fn parse_sync_pull_with_force() {
         let cli = Cli::try_parse_from(["desk", "sync", "pull", "--force"]).unwrap();
         match cli.command {
-            Commands::Sync { command: SyncCommands::Pull { force, .. } } => {
+            Commands::Sync {
+                command: SyncCommands::Pull { force, .. },
+            } => {
                 assert!(force);
             },
             _ => panic!("Expected Sync Pull command"),
@@ -942,7 +985,13 @@ mod tests {
     fn parse_auth_login() {
         let cli = Cli::try_parse_from(["desk", "auth", "login"]).unwrap();
         match cli.command {
-            Commands::Auth { command: AuthCommands::Login { provider, no_browser } } => {
+            Commands::Auth {
+                command:
+                    AuthCommands::Login {
+                        provider,
+                        no_browser,
+                    },
+            } => {
                 assert!(matches!(provider, ProviderArg::GitHub)); // default
                 assert!(!no_browser);
             },
@@ -955,7 +1004,9 @@ mod tests {
         // Note: clap converts PascalCase to kebab-case for value enum
         let cli = Cli::try_parse_from(["desk", "auth", "login", "-p", "google"]).unwrap();
         match cli.command {
-            Commands::Auth { command: AuthCommands::Login { provider, .. } } => {
+            Commands::Auth {
+                command: AuthCommands::Login { provider, .. },
+            } => {
                 assert!(matches!(provider, ProviderArg::Google));
             },
             _ => panic!("Expected Auth Login command"),
@@ -966,7 +1017,9 @@ mod tests {
     fn parse_auth_logout() {
         let cli = Cli::try_parse_from(["desk", "auth", "logout"]).unwrap();
         match cli.command {
-            Commands::Auth { command: AuthCommands::Logout } => {},
+            Commands::Auth {
+                command: AuthCommands::Logout,
+            } => {},
             _ => panic!("Expected Auth Logout command"),
         }
     }
@@ -975,7 +1028,9 @@ mod tests {
     fn parse_auth_status() {
         let cli = Cli::try_parse_from(["desk", "auth", "status"]).unwrap();
         match cli.command {
-            Commands::Auth { command: AuthCommands::Status } => {},
+            Commands::Auth {
+                command: AuthCommands::Status,
+            } => {},
             _ => panic!("Expected Auth Status command"),
         }
     }
@@ -1004,8 +1059,14 @@ mod tests {
 
     #[test]
     fn provider_arg_to_auth_provider() {
-        assert!(matches!(AuthProvider::from(ProviderArg::GitHub), AuthProvider::GitHub));
-        assert!(matches!(AuthProvider::from(ProviderArg::Google), AuthProvider::Google));
+        assert!(matches!(
+            AuthProvider::from(ProviderArg::GitHub),
+            AuthProvider::GitHub
+        ));
+        assert!(matches!(
+            AuthProvider::from(ProviderArg::Google),
+            AuthProvider::Google
+        ));
     }
 
     #[test]

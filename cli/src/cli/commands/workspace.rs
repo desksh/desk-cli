@@ -1611,9 +1611,7 @@ pub fn handle_watch(interval: u64, name: Option<String>) -> Result<()> {
     } else {
         let state = DeskState::load()?;
         let Some(n) = state.get_current(&repo_path) else {
-            println!(
-                "No active workspace. Specify a name with --name or open a workspace first."
-            );
+            println!("No active workspace. Specify a name with --name or open a workspace first.");
             std::process::exit(1);
         };
         n.clone()
