@@ -58,6 +58,10 @@ pub struct WorkspaceMetadata {
 
     /// When the workspace was last synced with the server.
     pub last_synced_at: Option<DateTime<Utc>>,
+
+    /// Tags for organizing workspaces.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[allow(dead_code)]

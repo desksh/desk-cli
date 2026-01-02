@@ -1001,6 +1001,152 @@ pub fn handle_doctor() -> Result<()> {
     Ok(())
 }
 
+/// Handles the `desk history` command.
+///
+/// Shows recent workspace switches.
+pub fn handle_history(limit: usize, repo_only: bool) -> Result<()> {
+    let state = DeskState::load()?;
+
+    let entries = if repo_only {
+        let repo_path = std::env::current_dir()?;
+        state.get_history_for_repo(&repo_path, limit)
+    } else {
+        state.get_history(limit).iter().collect()
+    };
+
+    if entries.is_empty() {
+        println!("No workspace history found.");
+        return Ok(());
+    }
+
+    println!("Recent workspace switches:\n");
+
+    for entry in entries {
+        let time_ago = format_time_ago(entry.timestamp);
+        println!("  {} ({})", entry.workspace, time_ago);
+        if !repo_only {
+            println!("    {}", entry.repo_path);
+        }
+    }
+
+    Ok(())
+}
+
+/// Format a timestamp as relative time.
+fn format_time_ago(timestamp: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let duration = now.signed_duration_since(timestamp);
+
+    if duration.num_days() > 0 {
+        format!("{} day(s) ago", duration.num_days())
+    } else if duration.num_hours() > 0 {
+        format!("{} hour(s) ago", duration.num_hours())
+    } else if duration.num_minutes() > 0 {
+        format!("{} minute(s) ago", duration.num_minutes())
+    } else {
+        "just now".to_string()
+    }
+}
+
+/// Handles the `desk config` command.
+///
+/// Views or modifies configuration.
+pub fn handle_config(key: Option<String>, value: Option<String>, list: bool) -> Result<()> {
+    let config = crate::config::load_config()?;
+
+    if list || (key.is_none() && value.is_none()) {
+        // List all config values
+        println!("Current configuration:\n");
+        println!("  api.base_url = {}", config.api.base_url);
+        println!("  api.timeout_secs = {}", config.api.timeout_secs);
+        println!();
+        println!("Config file: {}", crate::config::paths::config_file()?.display());
+        return Ok(());
+    }
+
+    if let Some(ref k) = key {
+        if let Some(ref v) = value {
+            // Set config value
+            println!("Setting configuration is not yet implemented.");
+            println!("Edit the config file directly: {}", crate::config::paths::config_file()?.display());
+            println!();
+            println!("To set {k} = {v}");
+        } else {
+            // Get config value
+            match k.as_str() {
+                "api.base_url" => println!("{}", config.api.base_url),
+                "api.timeout_secs" => println!("{}", config.api.timeout_secs),
+                _ => {
+                    println!("Unknown configuration key: {k}");
+                    println!("\nAvailable keys:");
+                    println!("  api.base_url");
+                    println!("  api.timeout_secs");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles the `desk tag` command.
+///
+/// Manages workspace tags.
+pub fn handle_tag(name: &str, command: crate::cli::TagCommands) -> Result<()> {
+    use crate::cli::TagCommands;
+
+    let store = FileWorkspaceStore::new()?;
+
+    let mut workspace = match store.load(name)? {
+        Some(ws) => ws,
+        None => {
+            println!("Workspace '{name}' not found.");
+            std::process::exit(1);
+        }
+    };
+
+    match command {
+        TagCommands::Add { tags } => {
+            for tag in &tags {
+                if !workspace.metadata.tags.contains(tag) {
+                    workspace.metadata.tags.push(tag.clone());
+                }
+            }
+            workspace.metadata.tags.sort();
+            workspace.touch();
+            store.save(&workspace, true)?;
+            println!("Added {} tag(s) to '{name}'.", tags.len());
+        }
+        TagCommands::Remove { tags } => {
+            let before = workspace.metadata.tags.len();
+            workspace.metadata.tags.retain(|t| !tags.contains(t));
+            let removed = before - workspace.metadata.tags.len();
+            workspace.touch();
+            store.save(&workspace, true)?;
+            println!("Removed {removed} tag(s) from '{name}'.");
+        }
+        TagCommands::List => {
+            if workspace.metadata.tags.is_empty() {
+                println!("No tags on workspace '{name}'.");
+            } else {
+                println!("Tags on '{name}':");
+                for tag in &workspace.metadata.tags {
+                    println!("  {tag}");
+                }
+            }
+        }
+        TagCommands::Clear => {
+            let count = workspace.metadata.tags.len();
+            workspace.metadata.tags.clear();
+            workspace.touch();
+            store.save(&workspace, true)?;
+            println!("Cleared {count} tag(s) from '{name}'.");
+        }
+    }
+
+    Ok(())
+}
+
 /// Saves the current git state as a workspace.
 ///
 /// Captures the current branch, commit SHA, and optionally stashes uncommitted

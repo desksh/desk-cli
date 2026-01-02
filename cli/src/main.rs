@@ -92,5 +92,8 @@ async fn run(cli: Cli) -> Result<()> {
         } => cli::commands::handle_search(&query, name_only, branch_only),
         Commands::Completions { shell } => cli::commands::handle_completions(shell),
         Commands::Doctor => cli::commands::handle_doctor(),
+        Commands::History { limit, repo_only } => cli::commands::handle_history(limit, repo_only),
+        Commands::Config { key, value, list } => cli::commands::handle_config(key, value, list),
+        Commands::Tag { name, command } => cli::commands::handle_tag(&name, command),
     }
 }

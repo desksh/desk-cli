@@ -218,6 +218,63 @@ pub enum Commands {
     ///
     /// Verifies configuration, storage, git access, and API connectivity.
     Doctor,
+
+    /// Show workspace switch history.
+    History {
+        /// Number of entries to show.
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+
+        /// Only show history for current repository.
+        #[arg(long)]
+        repo_only: bool,
+    },
+
+    /// View or modify configuration.
+    Config {
+        /// Configuration key to get or set.
+        key: Option<String>,
+
+        /// Value to set (if omitted, shows current value).
+        value: Option<String>,
+
+        /// List all configuration values.
+        #[arg(short, long)]
+        list: bool,
+    },
+
+    /// Manage workspace tags.
+    Tag {
+        /// Workspace name.
+        name: String,
+
+        #[command(subcommand)]
+        command: TagCommands,
+    },
+}
+
+/// Tag subcommands.
+#[derive(Subcommand, Debug)]
+pub enum TagCommands {
+    /// Add tags to a workspace.
+    Add {
+        /// Tags to add.
+        #[arg(required = true)]
+        tags: Vec<String>,
+    },
+
+    /// Remove tags from a workspace.
+    Remove {
+        /// Tags to remove.
+        #[arg(required = true)]
+        tags: Vec<String>,
+    },
+
+    /// List tags on a workspace.
+    List,
+
+    /// Clear all tags from a workspace.
+    Clear,
 }
 
 /// Supported shell types for init command.
