@@ -472,3 +472,96 @@ impl DeskApiClient {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_state_serializes() {
+        let state = WorkspaceState {
+            branch: "main".to_string(),
+            commit_sha: "abc123".to_string(),
+            stash_name: Some("desk: workspace test".to_string()),
+            repo_path: "/home/user/project".to_string(),
+            metadata: WorkspaceStateMetadata {
+                uncommitted_files: Some(5),
+                was_dirty: Some(true),
+            },
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        let parsed: WorkspaceState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.branch, "main");
+        assert_eq!(parsed.commit_sha, "abc123");
+        assert_eq!(parsed.stash_name, Some("desk: workspace test".to_string()));
+        assert_eq!(parsed.repo_path, "/home/user/project");
+        assert_eq!(parsed.metadata.uncommitted_files, Some(5));
+        assert_eq!(parsed.metadata.was_dirty, Some(true));
+    }
+
+    #[test]
+    fn workspace_state_metadata_defaults() {
+        let metadata = WorkspaceStateMetadata::default();
+
+        assert!(metadata.uncommitted_files.is_none());
+        assert!(metadata.was_dirty.is_none());
+    }
+
+    #[test]
+    fn remote_workspace_deserializes() {
+        let json = r#"{
+            "id": "uuid-123",
+            "name": "my-workspace",
+            "description": "Test workspace",
+            "state": {
+                "branch": "feature/test",
+                "commit_sha": "def456",
+                "stash_name": null,
+                "repo_path": "/repo",
+                "metadata": {}
+            },
+            "version": 3,
+            "last_synced_at": "2024-01-15T10:30:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-15T10:30:00Z"
+        }"#;
+
+        let ws: RemoteWorkspace = serde_json::from_str(json).unwrap();
+
+        assert_eq!(ws.id, "uuid-123");
+        assert_eq!(ws.name, "my-workspace");
+        assert_eq!(ws.description, Some("Test workspace".to_string()));
+        assert_eq!(ws.state.branch, "feature/test");
+        assert_eq!(ws.version, 3);
+        assert!(ws.last_synced_at.is_some());
+    }
+
+    #[test]
+    fn remote_workspace_without_optional_fields() {
+        let json = r#"{
+            "id": "uuid-456",
+            "name": "minimal-ws",
+            "description": null,
+            "state": {
+                "branch": "main",
+                "commit_sha": "abc",
+                "stash_name": null,
+                "repo_path": "/repo",
+                "metadata": {}
+            },
+            "version": 1,
+            "last_synced_at": null,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+
+        let ws: RemoteWorkspace = serde_json::from_str(json).unwrap();
+
+        assert_eq!(ws.id, "uuid-456");
+        assert!(ws.description.is_none());
+        assert!(ws.last_synced_at.is_none());
+        assert_eq!(ws.version, 1);
+    }
+}
